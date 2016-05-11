@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta name="viewport" content="initial-scale=1.0, user-scalable=no">
+    <meta charset="utf-8">
+    <title>Rectangular 1.0</title>
+    <style>
+      html, body {
+        height: 100%;
+        margin: 0;
+        padding: 0;
+      }
+      #map {
+        height: 100%;
+      }
+      .controls {
+        margin-top: 10px;
+        border: 1px solid transparent;
+        border-radius: 2px 0 0 2px;
+        box-sizing: border-box;
+        -moz-box-sizing: border-box;
+        height: 32px;
+        outline: none;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+      }
+
+      #pac-input {
+        background-color: #fff;
+        font-family: Roboto;
+        font-size: 15px;
+        font-weight: 300;
+        margin-left: 12px;
+        padding: 0 11px 0 13px;
+        text-overflow: ellipsis;
+        width: 300px;
+      }
+
+      #pac-input:focus {
+        border-color: #4d90fe;
+      }
+
+      .pac-container {
+        font-family: Roboto;
+      }
+
+      #type-selector {
+        color: #fff;
+        background-color: #4d90fe;
+        padding: 5px 11px 0px 11px;
+      }
+
+      #type-selector label {
+        font-family: Roboto;
+        font-size: 13px;
+        font-weight: 300;
+      }
+      #target {
+        width: 345px;
+      }
+
+      .map-container {
+        position: relative;
+      }
+
+      #user_input {
+        position: absolute;
+        bottom: 0%;
+        left: 0%;
+        margin-left: 1px;
+        color: black;
+        background-color: white;
+        padding: 2px;
+        font-family: "Arial Narrow", Arial, sans-serif;
+      }
+
+      a:link, a:visited {
+        background-color: white;
+        color: black;
+        border-style: solid;
+        border-width: 1px;
+        padding: 2px;
+        text-decoration: none;
+        font-family: "Arial Narrow", Arial, sans-serif;
+      }
+      a:hover, a:active {
+        background-color: black;
+        color: white;
+      }
+
+    </style>
+  </head>
+
+  <body>
+    <input id="pac-input" class="controls" type="text" placeholder="Search">
+    <div id="map"></div>
+
+    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyCQwLDREXVBG2lSf8NMjOABEAYhDNv74Jc&libraries=places&callback=initMap"
+         async defer></script>
+    <script type="text/javascript"
+       src="https://ajax.googleapis.com/ajax/libs/jquery/2.2.0/jquery.min.js"></script>
+
+    <script type="text/javascript">
+
+      var latA = 999;
+      var lngA = 999;
+      var latB = 999;
+      var lngB = 999;
+      var latC = 999;
+      var lngC = 999;
+      var latM = 999;
+      var lngM = 999;
+      var latN = 999;
+      var lngN = 999;
+      
+      Math.radians = function (degrees) {
+        return degrees*Math.PI/180;
+      };
+      Math.degrees = function (radians) {
+        return radians/Math.PI*180;
+      };
+      var scale_factor = function (angle) {
+        return Math.sqrt(1-Math.pow(0.006694379990141317*Math.sin(Math.radians(angle)),2))*1/Math.cos(Math.radians(angle))
+      }
+
+      var greatcircle_midpoint = function (latA,lngA,latB,lngB) {
+        var lat1 = Math.radians(latA);
+        var lng1 = Math.radians(lngA);
+        var lat2 = Math.radians(latB);
+        var lng2 = Math.radians(lngB);
+        var Bx = Math.cos(lat2) * Math.cos(lng2-lng1);
+        var By = Math.cos(lat2) * Math.sin(lng2-lng1);
+        var lat3 = Math.atan2(Math.sin(lat1) + Math.sin(lat2),
+                            Math.sqrt( (Math.cos(lat1)+Bx)*(Math.cos(lat1)+Bx) + By*By ) );
+        var lng3 = lng1 + Math.atan2(By, Math.cos(lat1) + Bx);
+        return [Math.degrees(lng3), Math.degrees(lat3)];
+      }
+
+      function initMap() {
+        var map = new google.maps.Map(document.getElementById('map'), {
+          center: {lat: 40.745032, lng: -74.027229},
+          zoom: 15,
+          mapTypeId: google.maps.MapTypeId.ROADMAP,
+          disableDoubleClickZoom: true,
+          tilt: 0
+        });
+
+        var rectPath = new google.maps.Polyline({
+          geodesic: true,
+          strokeColor: '#FF0000',
+          strokeOpacity: 1,
+          strokeWeight: 1
+        });
+        rectPath.setMap(map);
+
+        // Create the search box and link it to the UI element.
+        var input = document.getElementById('pac-input');
+        var searchBox = new google.maps.places.SearchBox(input);
+        map.controls[google.maps.ControlPosition.TOP_LEFT].push(input);
+
+        // Bias the SearchBox results towards current map's viewport.
+        map.addListener('bounds_changed', function() {
+          searchBox.setBounds(map.getBounds());
+        });
+
+        // Listen for the event fired when the user selects a prediction and retrieve
+        // more details for that place.
+        searchBox.addListener('places_changed', function() {
+          var places = searchBox.getPlaces();
+
+          if (places.length == 0) {
+            return;
+          }
+
+          // For each place, get the icon, name and location.
+          var bounds = new google.maps.LatLngBounds();
+          places.forEach(function(place) {
+            var icon = {
+              url: place.icon,
+              size: new google.maps.Size(71, 71),
+              origin: new google.maps.Point(0, 0),
+              anchor: new google.maps.Point(17, 34),
+              scaledSize: new google.maps.Size(25, 25)
+            };
+
+            if (place.geometry.viewport) {
+              // Only geocodes have viewport.
+              bounds.union(place.geometry.viewport);
+            } else {
+              bounds.extend(place.geometry.location);
+            }
+          });
+          map.fitBounds(bounds);
+        });
+
+        ptA = map.addListener('click', function(e) {
+          addMarkerA(e.latLng, map);
+        });
+
+        ptB = map.addListener('dblclick', function(e) {
+          if (latA != 999) {
+            addMarkerB(e.latLng, map);
+          }
+        });
+
+        ptC = map.addListener('rightclick', function(e) {
+          if (latB != 999) {
+            addMarkerC(e.latLng, map);
+          }
+        });
+
+
+
+    var $SCRIPT_ROOT = {{ request.script_root|tojson|safe }};
+
+    $(function() {
+    var submit_draft = function(e) {
+      $.getJSON($SCRIPT_ROOT + '/_draft', {
+        latO: latO.toString(),
+        lngO: lngO.toString(),
+        latA: latA.toString(),
+        lngA: lngA.toString(),
+        latB: latB.toString(),
+        lngB: lngB.toString(),
+        latC: latC.toString(),
+        lngC: lngC.toString(),
+        cs: $('input[name="cs"]').val()
+      }, function(data) {
+        $('#lenI').text(Math.round(data.lenI*10)/10);
+        $('#lenJ').text(Math.round(data.lenJ*10)/10);
+        $('#cnI').text(data.cnI);
+        $('#cnJ').text(data.cnJ);
+        $('input[name=cs]').focus().select();
+        latM = data.latM;
+        lngM = data.lngM;
+        latN = data.latN;
+        lngN = data.lngN;
+        rect(map,latA,lngA,latB,lngB,latM,lngM,latN,lngN)
+      });
+      return false;
+    };
+
+    var submit_final = function(e) {
+      $.getJSON($SCRIPT_ROOT + '/_final', {
+        latO: latO.toString(),
+        lngO: lngO.toString(),
+        latA: latA.toString(),
+        lngA: lngA.toString(),
+        latB: latB.toString(),
+        lngB: lngB.toString(),
+        latC: latC.toString(),
+        lngC: lngC.toString(),
+        cs: $('input[name="cs"]').val(),
+        demPath: $('input[name="demPath"]').val()
+      }, function(data) {
+        $('#lenI').text(Math.round(data.lenI*10)/10);
+        $('#lenJ').text(Math.round(data.lenJ*10)/10);
+        $('#cnI').text(data.cnI);
+        $('#cnJ').text(data.cnJ);
+        $('#status').text(data.status);
+        $('input[name=demPath]').focus().select();
+        latM = data.latM;
+        lngM = data.lngM;
+        latN = data.latN;
+        lngN = data.lngN;
+        rect(map,latA,lngA,latB,lngB,latM,lngM,latN,lngN)
+      });
+      return false;
+    };
+
+
+
+    $('a#draft').bind('click', submit_draft);
+    $('a#final').bind('click', submit_final);
+    $('input[type=text]').bind('keydown', function(e) {
+      if (e.keyCode == 13) {
+        submit_draft(e);
+      }
+    });
+    $('input[name=cs]').focus();
+
+    });
+
+
+
+
+  function addMarkerA(latLng, map) {
+    var markerA = new google.maps.Marker({
+      position: latLng,
+      map: map,
+      draggable: true,
+      label: 'A'
+    });
+    ptA.remove();
+    latA = markerA.getPosition().lat();
+    lngA = markerA.getPosition().lng();
+    if (latB != 999) {
+      O = greatcircle_midpoint(latA,lngA,latB,lngB);
+      lngO = O[0];
+      latO = O[1];
+      sf = scale_factor(latO);
+    }
+  
+    markerA.addListener('click', function() {
+      var infowindowA = new google.maps.InfoWindow({
+        content: '<p>' + markerA.getPosition() + '</p>'
+      });
+      infowindowA.open(map, markerA);
+      markerA.addListener('dragstart', function() {
+        infowindowA.close();
+      });
+    });
+  
+    markerA.addListener('dragend', function() {
+      latA = markerA.getPosition().lat();
+      lngA = markerA.getPosition().lng();
+      if (latB != 999) {
+        O = greatcircle_midpoint(latA,lngA,latB,lngB);
+        lngO = O[0];
+        latO = O[1];
+        sf = scale_factor(latO);
+      }
+    });
+  }
+
+  function addMarkerB(latLng, map) {
+    var markerB = new google.maps.Marker({
+      position: latLng,
+      map: map,
+      draggable: true,
+      label: 'B'
+    });
+    ptB.remove();
+    latB = markerB.getPosition().lat();
+    lngB = markerB.getPosition().lng();
+    O = greatcircle_midpoint(latA,lngA,latB,lngB);
+    lngO = O[0];
+    latO = O[1];
+    sf = scale_factor(latO);
+  
+    markerB.addListener('click', function() {
+      var infowindowB = new google.maps.InfoWindow({
+        content: '<p>' + markerB.getPosition() + '</p>'
+      });
+      infowindowB.open(map, markerB);
+      markerB.addListener('dragstart', function() {
+        infowindowB.close();
+      });
+    });
+  
+    markerB.addListener('dragend', function() {
+      latB = markerB.getPosition().lat();
+      lngB = markerB.getPosition().lng();
+      O = greatcircle_midpoint(latA,lngA,latB,lngB);
+      lngO = O[0];
+      latO = O[1];
+      sf = scale_factor(latO);
+    });
+  
+  }
+
+
+  function addMarkerC(latLng, map) {
+    var markerC = new google.maps.Marker({
+      position: latLng,
+      map: map,
+      draggable: true,
+      label: 'C'
+    });
+    ptC.remove();
+    latC = markerC.getPosition().lat();
+    lngC = markerC.getPosition().lng();
+  
+    markerC.addListener('click', function() {
+      var infowindowC = new google.maps.InfoWindow({
+        content: '<p>' + markerC.getPosition() + '</p>'
+      });
+      infowindowC.open(map, markerC);
+      markerC.addListener('dragstart', function() {
+        infowindowC.close();
+      });
+    });
+  
+    markerC.addListener('dragend', function() {
+      latC = markerC.getPosition().lat();
+      lngC = markerC.getPosition().lng();
+      dragSubmit(markerC);
+    });
+  }
+
+
+      var rect = function (map,latA,lngA,latB,lngB,latM,lngM,latN,lngN) {
+        var rectCoordinates = [
+          {lat: latA, lng: lngA},
+          {lat: latM, lng: lngM},
+          {lat: latB, lng: lngB},
+          {lat: latN, lng: lngN},
+          {lat: latA, lng: lngA}
+        ];
+        rectPath.setPath(rectCoordinates);
+      }
+
+
+    }
+
+    </script>
+
+
+  <div class="map-container">
+    <div id="map" class="map"></div>
+    <div id="user_input">
+      - <b>Rectangular 1.0</b> - <p>
+      <a href=# id="draft">DRAFT</a> &nbsp;&nbsp;&nbsp; 
+      <a href=# id="final">FINAL</a> <p>
+      Cell size: <input type="text" size="4" name="cs"> m <p>
+      Domain: <span id="lenI"> ? </span> m x <span id="lenJ"> ? </span> m <p>      
+      Model grid: <span id="cnI"> ? </span> x <span id="cnJ"> ? </span> <p>
+      DEM: <input type="text" size="10" name="demPath"> (opt)<p>
+      Status: <span id="status"> ? </span>
+    </div>
+  </div>
+
+  </body>
+</html>
