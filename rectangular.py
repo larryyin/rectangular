@@ -517,7 +517,7 @@ def final():
     for j in range(1,cnJ-1):
         for i in range(1,cnI-1):
             if ~isnan(depthm[i][j]):
-                s += "\n{I:5d}{J:5d}{H1:10.2f}{H2:10.2f}{depth:10.2f}{ang:10.2f}{lat:10.6f}{lon:10.6f}{datum:5.1f}".format(I=Im[i][j],J=Jm[i][j],H1=H1m[i][j],H2=H2m[i][j],depth=depthm[i][j],ang=ANGm[i][j],lat=latm[i][j],lon=lonm[i][j],datum=datumm[i][j])  
+                s += "\n{I:5d}{J:5d}{H1:10.2f}{H2:10.2f}{depth:10.3f}{ang:10.2f}{lat:10.6f}{lon:10.6f}{datum:5.1f}".format(I=Im[i][j],J=Jm[i][j],H1=H1m[i][j],H2=H2m[i][j],depth=depthm[i][j],ang=ANGm[i][j],lat=latm[i][j],lon=lonm[i][j],datum=datumm[i][j])  
     
     with open(outPath+'model_grid_hor', 'w') as f:
         f.writelines(s)
