@@ -15,6 +15,75 @@ from scipy.interpolate import griddata
 import os
 from scipy import stats
 
+def center2corners(CENTER):
+    CORNERS = np.zeros([CENTER.shape[0]+1,CENTER.shape[1]+1])
+    I_diff_half = np.diff(CENTER,axis=0)*.5
+    J_diff_half = np.diff(CENTER,axis=1)*.5
+    
+    I_interim = CENTER[:-1,:]+I_diff_half
+    J_interim_diff_half = np.diff(I_interim,axis=1)*.5
+    CORNERS[1:-1,1:-1] = I_interim[:,:-1]+J_interim_diff_half
+    
+    # Sides
+    I_W_interim = CENTER[0,:]-I_diff_half[0,:]
+    J_W_diff_half = np.diff(I_W_interim)*.5
+    CORNERS[0,1:-1] = I_W_interim[:-1]+J_W_diff_half
+    
+    I_E_interim = CENTER[-1,:]+I_diff_half[-1,:]
+    J_E_diff_half = np.diff(I_E_interim)*.5
+    CORNERS[-1,1:-1] = I_E_interim[:-1]+J_E_diff_half
+    
+    I_S_interim = CENTER[:,0]-J_diff_half[:,0]
+    J_S_diff_half = np.diff(I_S_interim)*.5
+    CORNERS[1:-1,0] = I_S_interim[:-1]+J_S_diff_half
+    
+    I_N_interim = CENTER[:,-1]+J_diff_half[:,-1]
+    J_N_diff_half = np.diff(I_N_interim)*.5
+    CORNERS[1:-1,-1] = I_N_interim[:-1]+J_N_diff_half
+    
+    # Corners
+    CORNERS[0,0] = CENTER[0,0]-I_diff_half[0,0]-J_diff_half[0,0]
+    CORNERS[-1,0] = CENTER[-1,0]+I_diff_half[-1,0]-J_diff_half[-1,0]
+    CORNERS[0,-1] = CENTER[0,-1]-I_diff_half[0,-1]+J_diff_half[0,-1]
+    CORNERS[-1,-1] = CENTER[-1,-1]+I_diff_half[-1,-1]+J_diff_half[-1,-1]
+    
+    return CORNERS
+
+def dist_greatcircle(lat1,lon1,lat2,lon2):
+    R = 6371000   # m
+    latrad1 = np.deg2rad(lat1)
+    latrad2 = np.deg2rad(lat2)
+    dLat = latrad2-latrad1
+    dLon = np.deg2rad(lon2-lon1)
+    a = (np.sin(dLat/2) * np.sin(dLat/2) +
+        np.cos(latrad1) * np.cos(latrad2) *
+        np.sin(dLon/2) * np.sin(dLon/2))
+    c = 2 * np.arctan2(np.sqrt(a), np.sqrt(1-a))
+    return R * c
+
+def bearing(lat1,lon1,lat2,lon2):
+    latrad1 = np.deg2rad(lat1)
+    latrad2 = np.deg2rad(lat2)
+    lonrad1 = np.deg2rad(lon1)
+    lonrad2 = np.deg2rad(lon2)
+    y = np.sin(lonrad2-lonrad1) * np.cos(latrad2)
+    x = (np.cos(latrad1)*np.sin(latrad2)-
+        np.sin(latrad1)*np.cos(latrad2)*np.cos(lonrad2-lonrad1))
+    return np.rad2deg(np.arctan2(y, x))
+
+def latlonlen(latdeg):
+    lat = np.deg2rad(latdeg)
+    m1 = 111132.92;
+    m2 = -559.82;
+    m3 = 1.175;
+    m4 = -0.0023;
+    p1 = 111412.84;
+    p2 = -93.5;
+    p3 = 0.118;
+    latlen = m1+(m2*np.cos(2*lat))+(m3*np.cos(4*lat))+(m4*np.cos(6*lat));
+    lonlen = (p1*np.cos(lat))+(p2*np.cos(3*lat))+(p3*np.cos(5*lat));
+    return (latlen,lonlen) # m
+
 #%%
 @app.route('/_draft')
 def draft():
@@ -319,40 +388,6 @@ def final():
     Ym = np.array([np.linspace(v,v+Jdy*cnJ,num=cnJ,dtype=float) for v in yI0])
     
     #%%
-    def center2corners(CENTER):
-        CORNERS = np.zeros([CENTER.shape[0]+1,CENTER.shape[1]+1])
-        I_diff_half = np.diff(CENTER,axis=0)*.5
-        J_diff_half = np.diff(CENTER,axis=1)*.5
-        
-        I_interim = CENTER[:-1,:]+I_diff_half
-        J_interim_diff_half = np.diff(I_interim,axis=1)*.5
-        CORNERS[1:-1,1:-1] = I_interim[:,:-1]+J_interim_diff_half
-        
-        # Sides
-        I_W_interim = CENTER[0,:]-I_diff_half[0,:]
-        J_W_diff_half = np.diff(I_W_interim)*.5
-        CORNERS[0,1:-1] = I_W_interim[:-1]+J_W_diff_half
-        
-        I_E_interim = CENTER[-1,:]+I_diff_half[-1,:]
-        J_E_diff_half = np.diff(I_E_interim)*.5
-        CORNERS[-1,1:-1] = I_E_interim[:-1]+J_E_diff_half
-        
-        I_S_interim = CENTER[:,0]-J_diff_half[:,0]
-        J_S_diff_half = np.diff(I_S_interim)*.5
-        CORNERS[1:-1,0] = I_S_interim[:-1]+J_S_diff_half
-        
-        I_N_interim = CENTER[:,-1]+J_diff_half[:,-1]
-        J_N_diff_half = np.diff(I_N_interim)*.5
-        CORNERS[1:-1,-1] = I_N_interim[:-1]+J_N_diff_half
-        
-        # Corners
-        CORNERS[0,0] = CENTER[0,0]-I_diff_half[0,0]-J_diff_half[0,0]
-        CORNERS[-1,0] = CENTER[-1,0]+I_diff_half[-1,0]-J_diff_half[-1,0]
-        CORNERS[0,-1] = CENTER[0,-1]-I_diff_half[0,-1]+J_diff_half[0,-1]
-        CORNERS[-1,-1] = CENTER[-1,-1]+I_diff_half[-1,-1]+J_diff_half[-1,-1]
-        
-        return CORNERS
-    
     cn_Xm = center2corners(Xm)
     cn_Ym = center2corners(Ym)
     
@@ -406,35 +441,13 @@ def final():
     J_interim_lonm = cn_lonm[:,:-1]+np.diff(cn_lonm,axis=1)*.5
     J_interim_latm = cn_latm[:,:-1]+np.diff(cn_latm,axis=1)*.5
     
-    def dist_greatcircle(lat1,lon1,lat2,lon2):
-        R = 6371000   # m
-        latrad1 = np.deg2rad(lat1)
-        latrad2 = np.deg2rad(lat2)
-        dLat = latrad2-latrad1
-        dLon = np.deg2rad(lon2-lon1)
-        a = (np.sin(dLat/2) * np.sin(dLat/2) +
-            np.cos(latrad1) * np.cos(latrad2) *
-            np.sin(dLon/2) * np.sin(dLon/2))
-        c = 2 * np.arctan2(np.sqrt(a), np.sqrt(1-a))
-        return R * c
-    
     H1m = dist_greatcircle(J_interim_latm[:-1,:],J_interim_lonm[:-1,:],
                            J_interim_latm[1:,:],J_interim_lonm[1:,:])
     H2m = dist_greatcircle(I_interim_latm[:,:-1],I_interim_lonm[:,:-1],
                            I_interim_latm[:,1:],I_interim_lonm[:,1:])
     
     # ANG
-    def bear_greatcircle(lat1,lon1,lat2,lon2):
-        latrad1 = np.deg2rad(lat1)
-        latrad2 = np.deg2rad(lat2)
-        lonrad1 = np.deg2rad(lon1)
-        lonrad2 = np.deg2rad(lon2)
-        y = np.sin(lonrad2-lonrad1) * np.cos(latrad2)
-        x = (np.cos(latrad1)*np.sin(latrad2)-
-            np.sin(latrad1)*np.cos(latrad2)*np.cos(lonrad2-lonrad1))
-        return np.rad2deg(np.arctan2(y, x))
-    
-    bearm = bear_greatcircle(latm,lonm,J_interim_latm[1:,:],J_interim_lonm[1:,:])
+    bearm = bearing(latm,lonm,J_interim_latm[1:,:],J_interim_lonm[1:,:])
     
     degQ4 = bearm>=270
     ANGm = np.zeros(bearm.shape)
@@ -447,20 +460,6 @@ def final():
     
     #%% Depth
     #%% H1, H2 Distance Matrix
-    def latlonlen(latdeg):
-        lat = np.deg2rad(latdeg)
-        m1 = 111132.92;
-        m2 = -559.82;
-        m3 = 1.175;
-        m4 = -0.0023;
-        p1 = 111412.84;
-        p2 = -93.5;
-        p3 = 0.118;
-        latlen = m1+(m2*np.cos(2*lat))+(m3*np.cos(4*lat))+(m4*np.cos(6*lat));
-        lonlen = (p1*np.cos(lat))+(p2*np.cos(3*lat))+(p3*np.cos(5*lat));
-        return (latlen,lonlen) # m
-    
-    
     # Open the dataset
     bandNum1 = 1
     DEM = gdal.Open(demPath, GA_ReadOnly )
