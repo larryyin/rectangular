@@ -84,6 +84,8 @@ def latlonlen(latdeg):
     lonlen = (p1*np.cos(lat))+(p2*np.cos(3*lat))+(p3*np.cos(5*lat));
     return (latlen,lonlen) # m
 
+cs_prec = 0.004
+
 #%%
 @app.route('/_draft')
 def draft():
@@ -343,16 +345,6 @@ def final():
     yM = yM+yOff
     yN = yN+yOff
     
-    lenI = np.sqrt((xA-xM)**2+(yA-yM)**2)
-    lenJ = np.sqrt((xB-xM)**2+(yB-yM)**2)
-    
-    if cs>0:
-        cnI = int(np.ceil(lenI/cs))
-        cnJ = int(np.ceil(lenJ/cs))
-    else:
-        cnI = 0
-        cnJ = 0
-    
     wgs_MN = ogr.Geometry(ogr.wkbMultiPoint)
     
     wgs_M = ogr.Geometry(ogr.wkbPoint)
@@ -370,81 +362,213 @@ def final():
     lngN = wgs_MN[1][0]
     latN = wgs_MN[1][1]
     
-    #%%
-    Jm,Im = np.meshgrid(range(cnJ),range(cnI))
-    Jm = Jm+1
-    Im = Im+1
+    lenI = np.sqrt((xA-xM)**2+(yA-yM)**2)
+    lenJ = np.sqrt((xB-xM)**2+(yB-yM)**2)
+
+#%% Squarization
+    csI = cs
+    csJ = cs
+    med_H1 = 0
+    med_H2 = 0
+    loop = 0
     
-    Idx = cs*(xM-xA)/lenI
-    Idy = cs*(yM-yA)/lenI
-    
-    xI0 = np.linspace(xA,xA+Idx*cnI,num=cnI,dtype=float)
-    yI0 = np.linspace(yA,yA+Idy*cnI,num=cnI,dtype=float)
-    
-    Jdx = cs*(xN-xA)/lenJ
-    Jdy = cs*(yN-yA)/lenJ
-    
-    Xm = np.array([np.linspace(v,v+Jdx*cnJ,num=cnJ,dtype=float) for v in xI0])
-    Ym = np.array([np.linspace(v,v+Jdy*cnJ,num=cnJ,dtype=float) for v in yI0])
-    
-    #%%
-    cn_Xm = center2corners(Xm)
-    cn_Ym = center2corners(Ym)
-    
-    
-    #%% Centers
-    wgs_grid = ogr.Geometry(ogr.wkbMultiPoint)
-    
-    for iJ in range(cnJ):
-        for iI in range(cnI):
-            wgs_node = ogr.Geometry(ogr.wkbPoint)
-            wgs_node.AddPoint_2D(Xm[iI,iJ],Ym[iI,iJ])
-            wgs_grid.AddGeometry(wgs_node)
-    wgs_grid.Transform(om2wgs)
-    wgs_grid = json.loads(wgs_grid.ExportToJson())['coordinates']
-    
-    lonm = np.zeros(Xm.shape)
-    latm = np.zeros(Ym.shape)
-    count = 0
-    for iJ in range(cnJ):
-        for iI in range(cnI):
-            lonm[iI,iJ] = wgs_grid[count][0]
-            latm[iI,iJ] = wgs_grid[count][1]
-            count+=1
-    wgs_grid = []
-    
-    #%% Corners
-    wgs_grid = ogr.Geometry(ogr.wkbMultiPoint)
-    
-    for iJ in range(cnJ+1):
-        for iI in range(cnI+1):
-            wgs_node = ogr.Geometry(ogr.wkbPoint)
-            wgs_node.AddPoint_2D(cn_Xm[iI,iJ],cn_Ym[iI,iJ])
-            wgs_grid.AddGeometry(wgs_node)
-    wgs_grid.Transform(om2wgs)
-    wgs_grid = json.loads(wgs_grid.ExportToJson())['coordinates']
-    
-    cn_lonm = np.zeros(cn_Xm.shape)
-    cn_latm = np.zeros(cn_Ym.shape)
-    count = 0
-    for iJ in range(cnJ+1):
-        for iI in range(cnI+1):
-            cn_lonm[iI,iJ] = wgs_grid[count][0]
-            cn_latm[iI,iJ] = wgs_grid[count][1]
-            count+=1
-    wgs_grid = []
-    
-    
-    #%% H1, H2, ANG
-    I_interim_lonm = cn_lonm[:-1,:]+np.diff(cn_lonm,axis=0)*.5
-    I_interim_latm = cn_latm[:-1,:]+np.diff(cn_latm,axis=0)*.5
-    J_interim_lonm = cn_lonm[:,:-1]+np.diff(cn_lonm,axis=1)*.5
-    J_interim_latm = cn_latm[:,:-1]+np.diff(cn_latm,axis=1)*.5
-    
-    H1m = dist_greatcircle(J_interim_latm[:-1,:],J_interim_lonm[:-1,:],
-                           J_interim_latm[1:,:],J_interim_lonm[1:,:])
-    H2m = dist_greatcircle(I_interim_latm[:,:-1],I_interim_lonm[:,:-1],
-                           I_interim_latm[:,1:],I_interim_lonm[:,1:])
+    while abs(cs-med_H1)>=cs_prec:
+        loop+=1
+#            print(csI,csJ)
+#            print(med_H1,med_H2)
+        if med_H1*med_H2>0:
+            csI = csI-(med_H1-cs)/2
+#            csJ = csI-(med_H1-cs)/2
+        else:
+            csI = cs
+#            csJ = cs
+        
+        print("Iteration "+str(loop)+': '+str(med_H1)+' x '+str(med_H2))
+        
+        if csI>cs_prec*3 and csJ>cs_prec*3:
+            cnI = int(np.ceil(lenI/csI))
+            cnJ = int(np.ceil(lenJ/csJ))
+        else:
+            cnI = 0
+            cnJ = 0
+        
+        #%%
+        Jm,Im = np.meshgrid(range(cnJ),range(cnI))
+        Jm = Jm+1
+        Im = Im+1
+        
+        Idx = csI*(xM-xA)/lenI
+        Idy = csI*(yM-yA)/lenI
+        
+        xI0 = np.linspace(xA,xA+Idx*cnI,num=cnI,dtype=float)
+        yI0 = np.linspace(yA,yA+Idy*cnI,num=cnI,dtype=float)
+        
+        Jdx = csJ*(xN-xA)/lenJ
+        Jdy = csJ*(yN-yA)/lenJ
+        
+        Xm = np.array([np.linspace(v,v+Jdx*cnJ,num=cnJ,dtype=float) for v in xI0])
+        Ym = np.array([np.linspace(v,v+Jdy*cnJ,num=cnJ,dtype=float) for v in yI0])
+        
+        #%%
+        cn_Xm = center2corners(Xm)
+        cn_Ym = center2corners(Ym)
+        
+        
+        #%% Centers
+        wgs_grid = ogr.Geometry(ogr.wkbMultiPoint)
+        
+        for iJ in range(cnJ):
+            for iI in range(cnI):
+                wgs_node = ogr.Geometry(ogr.wkbPoint)
+                wgs_node.AddPoint_2D(Xm[iI,iJ],Ym[iI,iJ])
+                wgs_grid.AddGeometry(wgs_node)
+        wgs_grid.Transform(om2wgs)
+        wgs_grid = json.loads(wgs_grid.ExportToJson())['coordinates']
+        
+        lonm = np.zeros(Xm.shape)
+        latm = np.zeros(Ym.shape)
+        count = 0
+        for iJ in range(cnJ):
+            for iI in range(cnI):
+                lonm[iI,iJ] = wgs_grid[count][0]
+                latm[iI,iJ] = wgs_grid[count][1]
+                count+=1
+        wgs_grid = []
+        
+        #%% Corners
+        wgs_grid = ogr.Geometry(ogr.wkbMultiPoint)
+        
+        for iJ in range(cnJ+1):
+            for iI in range(cnI+1):
+                wgs_node = ogr.Geometry(ogr.wkbPoint)
+                wgs_node.AddPoint_2D(cn_Xm[iI,iJ],cn_Ym[iI,iJ])
+                wgs_grid.AddGeometry(wgs_node)
+        wgs_grid.Transform(om2wgs)
+        wgs_grid = json.loads(wgs_grid.ExportToJson())['coordinates']
+        
+        cn_lonm = np.zeros(cn_Xm.shape)
+        cn_latm = np.zeros(cn_Ym.shape)
+        count = 0
+        for iJ in range(cnJ+1):
+            for iI in range(cnI+1):
+                cn_lonm[iI,iJ] = wgs_grid[count][0]
+                cn_latm[iI,iJ] = wgs_grid[count][1]
+                count+=1
+        wgs_grid = []
+        
+        
+        #%% H1, H2
+        I_interim_lonm = cn_lonm[:-1,:]+np.diff(cn_lonm,axis=0)*.5
+        I_interim_latm = cn_latm[:-1,:]+np.diff(cn_latm,axis=0)*.5
+        J_interim_lonm = cn_lonm[:,:-1]+np.diff(cn_lonm,axis=1)*.5
+        J_interim_latm = cn_latm[:,:-1]+np.diff(cn_latm,axis=1)*.5
+        
+        H1m = dist_greatcircle(J_interim_latm[:-1,:],J_interim_lonm[:-1,:],
+                               J_interim_latm[1:,:],J_interim_lonm[1:,:])
+        H2m = dist_greatcircle(I_interim_latm[:,:-1],I_interim_lonm[:,:-1],
+                               I_interim_latm[:,1:],I_interim_lonm[:,1:])
+        
+        med_H1 = np.median(H1m.ravel())
+        med_H2 = np.median(H2m.ravel())
+
+    while abs(cs-med_H2)>=cs_prec:
+        loop+=1
+#            print(csI,csJ)
+#            print(med_H1,med_H2)
+        if med_H2>0:
+#            csI = csI-(med_H1-cs)/2
+            csJ = csJ-(med_H2-cs)/2
+        else:
+#            csI = cs
+            csJ = cs
+        
+        print("Iteration "+str(loop)+': '+str(med_H1)+' x '+str(med_H2))
+        
+        if csI>cs_prec*3 and csJ>cs_prec*3:
+            cnI = int(np.ceil(lenI/csI))
+            cnJ = int(np.ceil(lenJ/csJ))
+        else:
+            cnI = 0
+            cnJ = 0
+        
+        #%%
+        Jm,Im = np.meshgrid(range(cnJ),range(cnI))
+        Jm = Jm+1
+        Im = Im+1
+        
+        Idx = csI*(xM-xA)/lenI
+        Idy = csI*(yM-yA)/lenI
+        
+        xI0 = np.linspace(xA,xA+Idx*cnI,num=cnI,dtype=float)
+        yI0 = np.linspace(yA,yA+Idy*cnI,num=cnI,dtype=float)
+        
+        Jdx = csJ*(xN-xA)/lenJ
+        Jdy = csJ*(yN-yA)/lenJ
+        
+        Xm = np.array([np.linspace(v,v+Jdx*cnJ,num=cnJ,dtype=float) for v in xI0])
+        Ym = np.array([np.linspace(v,v+Jdy*cnJ,num=cnJ,dtype=float) for v in yI0])
+        
+        #%%
+        cn_Xm = center2corners(Xm)
+        cn_Ym = center2corners(Ym)
+        
+        
+        #%% Centers
+        wgs_grid = ogr.Geometry(ogr.wkbMultiPoint)
+        
+        for iJ in range(cnJ):
+            for iI in range(cnI):
+                wgs_node = ogr.Geometry(ogr.wkbPoint)
+                wgs_node.AddPoint_2D(Xm[iI,iJ],Ym[iI,iJ])
+                wgs_grid.AddGeometry(wgs_node)
+        wgs_grid.Transform(om2wgs)
+        wgs_grid = json.loads(wgs_grid.ExportToJson())['coordinates']
+        
+        lonm = np.zeros(Xm.shape)
+        latm = np.zeros(Ym.shape)
+        count = 0
+        for iJ in range(cnJ):
+            for iI in range(cnI):
+                lonm[iI,iJ] = wgs_grid[count][0]
+                latm[iI,iJ] = wgs_grid[count][1]
+                count+=1
+        wgs_grid = []
+        
+        #%% Corners
+        wgs_grid = ogr.Geometry(ogr.wkbMultiPoint)
+        
+        for iJ in range(cnJ+1):
+            for iI in range(cnI+1):
+                wgs_node = ogr.Geometry(ogr.wkbPoint)
+                wgs_node.AddPoint_2D(cn_Xm[iI,iJ],cn_Ym[iI,iJ])
+                wgs_grid.AddGeometry(wgs_node)
+        wgs_grid.Transform(om2wgs)
+        wgs_grid = json.loads(wgs_grid.ExportToJson())['coordinates']
+        
+        cn_lonm = np.zeros(cn_Xm.shape)
+        cn_latm = np.zeros(cn_Ym.shape)
+        count = 0
+        for iJ in range(cnJ+1):
+            for iI in range(cnI+1):
+                cn_lonm[iI,iJ] = wgs_grid[count][0]
+                cn_latm[iI,iJ] = wgs_grid[count][1]
+                count+=1
+        wgs_grid = []
+        
+        
+        #%% H1, H2
+        I_interim_lonm = cn_lonm[:-1,:]+np.diff(cn_lonm,axis=0)*.5
+        I_interim_latm = cn_latm[:-1,:]+np.diff(cn_latm,axis=0)*.5
+        J_interim_lonm = cn_lonm[:,:-1]+np.diff(cn_lonm,axis=1)*.5
+        J_interim_latm = cn_latm[:,:-1]+np.diff(cn_latm,axis=1)*.5
+        
+        H1m = dist_greatcircle(J_interim_latm[:-1,:],J_interim_lonm[:-1,:],
+                               J_interim_latm[1:,:],J_interim_lonm[1:,:])
+        H2m = dist_greatcircle(I_interim_latm[:,:-1],I_interim_lonm[:,:-1],
+                               I_interim_latm[:,1:],I_interim_lonm[:,1:])
+        
+        med_H1 = np.median(H1m.ravel())
+        med_H2 = np.median(H2m.ravel())
     
     # ANG
     bearm = bearing(latm,lonm,J_interim_latm[1:,:],J_interim_lonm[1:,:])
@@ -479,7 +603,7 @@ def final():
     
     nodata = np.nanmin(data_raw)
     mask_domain = ~(data_raw==nodata)
-    data = np.copy(data_raw)
+    data = np.copy(data_raw).astype(float)
     data[~mask_domain] = np.nan
     
     # Close the datasets
@@ -538,7 +662,6 @@ def final():
                    lenI=lenI,lenJ=lenJ,
                    cnI=cnI,cnJ=cnJ,
                    status=status)
-
 
 #%%
 @app.route('/')
