@@ -594,8 +594,7 @@ def final():
     x_coor = xv * x_size + x_ul + (x_size*.5)
     y_coor = yv * y_size + y_ul + (y_size*.5)
     
-    nodata = np.nanmin(data_raw)
-    mask_domain = ~(data_raw==nodata)
+    mask_domain = (data_raw>-9999)*(data_raw<9999)
     data = np.copy(data_raw).astype(float)
     data[~mask_domain] = np.nan
     
@@ -613,6 +612,12 @@ def final():
     datumm = np.zeros(lonm.shape)
     
     #%%
+    if not os.path.exists(outPath):
+        os.makedirs(outPath)
+    else:
+        shutil.rmtree(outPath)
+        os.makedirs(outPath)
+    
     # Write to csv
     MG = pd.DataFrame({'I':Im.ravel(),
                        'J':Jm.ravel(),
