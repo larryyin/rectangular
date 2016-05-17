@@ -374,14 +374,10 @@ def final():
     
     while abs(cs-med_H1)>=cs_prec:
         loop+=1
-#            print(csI,csJ)
-#            print(med_H1,med_H2)
         if med_H1*med_H2>0:
             csI = csI-(med_H1-cs)/2
-#            csJ = csI-(med_H1-cs)/2
         else:
             csI = cs
-#            csJ = cs
         
         print("Iteration "+str(loop)+': '+str(med_H1)+' x '+str(med_H2))
         
@@ -473,10 +469,7 @@ def final():
 
     while abs(cs-med_H2)>=cs_prec:
         loop+=1
-#            print(csI,csJ)
-#            print(med_H1,med_H2)
         if med_H2>0:
-#            csI = csI-(med_H1-cs)/2
             csJ = csJ-(med_H2-cs)/2
         else:
 #            csI = cs
