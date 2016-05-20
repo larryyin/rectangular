@@ -10,9 +10,10 @@ from osgeo.gdalnumeric import *
 from osgeo.gdalconst import *
 import json
 import numpy as np
-import pandas as pd
 from scipy.interpolate import griddata
 import os
+import re
+import shutil
 from scipy import stats
 
 def center2corners(CENTER):
@@ -84,7 +85,221 @@ def latlonlen(latdeg):
     lonlen = (p1*np.cos(lat))+(p2*np.cos(3*lat))+(p3*np.cos(5*lat));
     return (latlen,lonlen) # m
 
-cs_prec = 0.004
+def _det(xvert, yvert):
+    '''Compute twice the area of the triangle defined by points with using
+    determinant formula.
+
+    Input parameters:
+
+    xvert -- A vector of nodal x-coords (array-like).
+    yvert -- A vector of nodal y-coords (array-like).
+
+    Output parameters:
+
+    Twice the area of the triangle defined by the points.
+
+    Notes:
+
+    _det is positive if points define polygon in anticlockwise order.
+    _det is negative if points define polygon in clockwise order.
+    _det is zero if at least two of the points are concident or if
+        all points are collinear.
+
+    '''
+    xvert = np.asfarray(xvert)
+    yvert = np.asfarray(yvert)
+    x_prev = np.concatenate(([xvert[-1]], xvert[:-1]))
+    y_prev = np.concatenate(([yvert[-1]], yvert[:-1]))
+    return np.sum(yvert * x_prev - xvert * y_prev, axis=0)
+
+class Polygon:
+    '''Polygon object.
+
+    Input parameters:
+
+    x -- A sequence of nodal x-coords.
+    y -- A sequence of nodal y-coords.
+
+    '''
+
+    def __init__(self, x, y):
+        if len(x) != len(y):
+            raise IndexError('x and y must be equally sized.')
+        self.x = np.asfarray(x)
+        self.y = np.asfarray(y)
+        # Closes the polygon if were open
+        x1, y1 = x[0], y[0]
+        xn, yn = x[-1], y[-1]
+        if x1 != xn or y1 != yn:
+            self.x = np.concatenate((self.x, [x1]))
+            self.y = np.concatenate((self.y, [y1]))
+        # Anti-clockwise coordinates
+        if _det(self.x, self.y) < 0:
+            self.x = self.x[::-1]
+            self.y = self.y[::-1]
+
+    def is_inside(self, xpoint, ypoint, smalld=1e-12):
+        '''Check if point is inside a general polygon.
+
+        Input parameters:
+
+        xpoint -- The x-coord of the point to be tested.
+        ypoint -- The y-coords of the point to be tested.
+        smalld -- A small float number.
+
+        xpoint and ypoint could be scalars or array-like sequences.
+
+        Output parameters:
+
+        mindst -- The distance from the point to the nearest point of the
+                  polygon.
+                  If mindst < 0 then point is outside the polygon.
+                  If mindst = 0 then point in on a side of the polygon.
+                  If mindst > 0 then point is inside the polygon.
+
+        Notes:
+
+        An improved version of the algorithm of Nordbeck and Rydstedt.
+
+        REF: SLOAN, S.W. (1985): A point-in-polygon program. Adv. Eng.
+             Software, Vol 7, No. 1, pp 45-47.
+
+        '''
+        xpoint = np.asfarray(xpoint)
+        ypoint = np.asfarray(ypoint)
+        # Scalar to array
+        if xpoint.shape is tuple():
+            xpoint = np.array([xpoint], dtype=float)
+            ypoint = np.array([ypoint], dtype=float)
+            scalar = True
+        else:
+            scalar = False
+        # Check consistency
+        if xpoint.shape != ypoint.shape:
+            raise IndexError('x and y has different shapes')
+        # If snear = True: Dist to nearest side < nearest vertex
+        # If snear = False: Dist to nearest vertex < nearest side
+        snear = np.ma.masked_all(xpoint.shape, dtype=bool)
+        # Initialize arrays
+        mindst = np.ones_like(xpoint, dtype=float) * np.inf
+        j = np.ma.masked_all(xpoint.shape, dtype=int)
+        x = self.x
+        y = self.y
+        n = len(x) - 1  # Number of sides/vertices defining the polygon
+        # Loop over each side defining polygon
+        for i in range(n):
+            d = np.ones_like(xpoint, dtype=float) * np.inf
+            # Start of side has coords (x1, y1)
+            # End of side has coords (x2, y2)
+            # Point has coords (xpoint, ypoint)
+            x1 = x[i]
+            y1 = y[i]
+            x21 = x[i + 1] - x1
+            y21 = y[i + 1] - y1
+            x1p = x1 - xpoint
+            y1p = y1 - ypoint
+            # Points on infinite line defined by
+            #     x = x1 + t * (x1 - x2)
+            #     y = y1 + t * (y1 - y2)
+            # where
+            #     t = 0    at (x1, y1)
+            #     t = 1    at (x2, y2)
+            # Find where normal passing through (xpoint, ypoint) intersects
+            # infinite line
+            t = -(x1p * x21 + y1p * y21) / (x21 ** 2 + y21 ** 2)
+            tlt0 = t < 0
+            tle1 = (0 <= t) & (t <= 1)
+            # Normal intersects side
+            d[tle1] = ((x1p[tle1] + t[tle1] * x21) ** 2 +
+                       (y1p[tle1] + t[tle1] * y21) ** 2)
+            # Normal does not intersects side
+            # Point is closest to vertex (x1, y1)
+            # Compute square of distance to this vertex
+            d[tlt0] = x1p[tlt0] ** 2 + y1p[tlt0] ** 2
+            # Store distances
+            mask = d < mindst
+            mindst[mask] = d[mask]
+            j[mask] = i
+            # Point is closer to (x1, y1) than any other vertex or side
+            snear[mask & tlt0] = False
+            # Point is closer to this side than to any other side or vertex
+            snear[mask & tle1] = True
+        if np.ma.count(snear) != snear.size:
+            raise IndexError('Error computing distances')
+        mindst **= 0.5
+        # Point is closer to its nearest vertex than its nearest side, check if
+        # nearest vertex is concave.
+        # If the nearest vertex is concave then point is inside the polygon,
+        # else the point is outside the polygon.
+        jo = j.copy()
+        jo[j == 0] -= 1
+        area = _det([x[j + 1], x[j], x[jo - 1]], [y[j + 1], y[j], y[jo - 1]])
+        mindst[~snear] = np.copysign(mindst, area)[~snear]
+        # Point is closer to its nearest side than to its nearest vertex, check
+        # if point is to left or right of this side.
+        # If point is to left of side it is inside polygon, else point is
+        # outside polygon.
+        area = _det([x[j], x[j + 1], xpoint], [y[j], y[j + 1], ypoint])
+        mindst[snear] = np.copysign(mindst, area)[snear]
+        # Point is on side of polygon
+        mindst[np.fabs(mindst) < smalld] = 0
+        # If input values were scalar then the output should be too
+        if scalar:
+            mindst = float(mindst)
+        return mindst
+
+def kml2polygon(kml):
+    with open(kml,'r') as f_poly:
+        text_all = f_poly.read().replace('\n', '')
+    
+    item = text_all.split("</outerBoundaryIs>")[0]
+    if "<outerBoundaryIs>" in item:
+        testStr = item[item.find("<outerBoundaryIs>")+len("<outerBoundaryIs>"):]
+        if ',0.' not in testStr:
+            isNear0 = 0
+            if ',0' in testStr:
+                is3D = 1
+            else:
+                is3D = 0
+        else:
+            isNear0 = 1
+            if ',0' in testStr:
+                is3D = 1
+            else:
+                is3D = 0
+    
+    outer_block = []
+    
+    if (isNear0==0) and (is3D==1):
+        stripper = re.compile(r'[^\d.,-;]+')
+        for item in text_all.split("</outerBoundaryIs>"):
+            if "<outerBoundaryIs>" in item:
+                block = (stripper.sub('', item[item.find("<outerBoundaryIs>")+
+                         len("<outerBoundaryIs>"):].replace(',0',';'))).rstrip('/').rstrip(';')
+                outer_block.append(block)
+    elif (isNear0==1) and (is3D==1):
+        stripper = re.compile(r'[^\d.,-;]+')
+        for item in text_all.split("</outerBoundaryIs>"):
+            if "<outerBoundaryIs>" in item:
+                block = (stripper.sub('', item[item.find("<outerBoundaryIs>")+
+                         len("<outerBoundaryIs>"):].replace(',0.',',999.').replace(',0',';'))).rstrip('/').rstrip(';').replace(',999.',',0.')
+                outer_block.append(block)
+    elif (is3D==0):
+        stripper = re.compile(r'[^\d.,-;]+')
+        for item in text_all.split("</outerBoundaryIs>"):
+            if "<outerBoundaryIs>" in item:
+                block = (stripper.sub('', item[item.find("<outerBoundaryIs>")+
+                         len("<outerBoundaryIs>"):].replace(' ',';'))).lstrip(';').rstrip('/').rstrip(';').rstrip('/').rstrip(';')
+                outer_block.append(block)
+    
+    outer = [np.array([[float(v6) for v6 in v5] for v5 in v4]) for v4 in 
+            [[v3.split(',') for v3 in v2] for v2 in 
+             [v.split(';') for v in outer_block]]]
+    
+    polygons = [Polygon(v[:,0], v[:,1]) for v in outer]
+    return polygons
+
+cs_prec = 0.004 # m
 
 #%%
 @app.route('/_draft')
@@ -245,12 +460,28 @@ def final():
     
     demPath = request.args.get('demPath', 0, type=str)
     if not demPath:
-        demPath = 'in/'+os.listdir('in/')[0]
+        demPath = 'dem/'+os.listdir('dem/')[0]
     elif not os.path.exists(demPath):
-        status = 'Wrong DEM'
+        status = 'Invalid DEM'
         return jsonify(status=status)
-    outPath = 'out/'
     print('DEM path: '+demPath)
+    
+    buildingsPath = request.args.get('buildingsPath', 0, type=str)
+    if not buildingsPath:
+        if not os.listdir('buildings/'):
+            isBuilding = 0
+        else:
+            isBuilding = 1
+            buildingsPath = 'buildings/'+os.listdir('buildings/')[0]
+            print('Buildings path: '+buildingsPath)
+    elif not os.path.exists(buildingsPath):
+        status = 'Invalid buildings'
+        return jsonify(status=status)
+    else:
+        isBuilding = 1
+        print('Buildings path: '+buildingsPath)
+    
+    outPath = 'out/'
     print('Output path: '+outPath)
     
     wgs84 = osr.SpatialReference()
@@ -472,7 +703,6 @@ def final():
         if med_H2>0:
             csJ = csJ-(med_H2-cs)/2
         else:
-#            csI = cs
             csJ = cs
         
         print("Iteration "+str(loop)+': '+str(med_H1)+' x '+str(med_H2))
@@ -576,6 +806,7 @@ def final():
     print('ANG', stats.describe(ANGm.ravel()))
     
     #%% Depth
+    print('Extracting depths from DEM...')
     #%% H1, H2 Distance Matrix
     # Open the dataset
     bandNum1 = 1
@@ -611,25 +842,23 @@ def final():
     #%%
     datumm = np.zeros(lonm.shape)
     
-    #%%
+    #%% Buildings
+    print("Importing buildings...")
+    if isBuilding:
+        non_building = np.ones(lonm.shape).astype(bool)
+        polygons = kml2polygon(buildingsPath)
+        for v in polygons:
+            non_building *= ~(v.is_inside(lonm,latm)>0)
+        print("Imported "+str(len(polygons))+" buildings occupying "+
+              str(np.nansum(np.nansum((~non_building).astype(int))))+" cells.")
+    
+    #%% Output
+    print('Write to output...')
     if not os.path.exists(outPath):
         os.makedirs(outPath)
     else:
         shutil.rmtree(outPath)
         os.makedirs(outPath)
-    
-    # Write to csv
-    MG = pd.DataFrame({'I':Im.ravel(),
-                       'J':Jm.ravel(),
-                       'H1':H1m.ravel(),
-                       'H2':H2m.ravel(),
-                       'depth':depthm.ravel(),
-                       'ang':ANGm.ravel(),
-                       'lat':latm.ravel(),
-                       'lon':lonm.ravel(),
-                       'datum':datumm.ravel()})[['I','J','H1','H2','depth','ang','lat','lon','datum']]
-    
-    MG.to_csv(outPath+'model_grid.csv', index=False)
     
     # Write to model_grid_hor
     s = []
@@ -637,9 +866,8 @@ def final():
     s += "{nI:5d}{nJ:5d}".format(nI=cnI,nJ=cnJ)
     for j in range(1,cnJ-1):
         for i in range(1,cnI-1):
-            if ~isnan(depthm[i][j]):
+            if (~isnan(depthm[i][j])) and non_building[i][j]:
                 s += "\n{I:5d}{J:5d}{H1:10.2f}{H2:10.2f}{depth:10.3f}{ang:10.2f}{lat:10.6f}{lon:10.6f}{datum:5.1f}".format(I=Im[i][j],J=Jm[i][j],H1=H1m[i][j],H2=H2m[i][j],depth=depthm[i][j],ang=ANGm[i][j],lat=latm[i][j],lon=lonm[i][j],datum=datumm[i][j])  
-    
     with open(outPath+'model_grid_hor', 'w') as f:
         f.writelines(s)
 
@@ -648,12 +876,23 @@ def final():
     for j in range(cnJ+1):
         for i in range(cnI+1):
             s += "{I:5d}{J:5d}{lon:12.6f}{lat:12.6f}{mask:5d}\n".format(I=i+1,J=j+1,lat=cn_latm[i][j],lon=cn_lonm[i][j],mask=1)  
-    
     with open(outPath+'corner_loc', 'w') as f:
+        f.writelines(s)
+    
+    # Write model_grid to csv
+    s = []
+    s += "I,J,H1,H2,depth,ang,lat,lon,datum\n"
+    for j in range(1,cnJ-1):
+        for i in range(1,cnI-1):
+            if (~isnan(depthm[i][j])) and non_building[i][j]:
+                s += "\n{I:d},{J:d},{H1:.2f},{H2:.2f},{depth:.3f},{ang:.2f},{lat:.6f},{lon:.6f},{datum:.1f}".format(I=Im[i][j],J=Jm[i][j],H1=H1m[i][j],H2=H2m[i][j],depth=depthm[i][j],ang=ANGm[i][j],lat=latm[i][j],lon=lonm[i][j],datum=datumm[i][j])  
+    with open(outPath+'model_grid.csv', 'w') as f:
         f.writelines(s)
     
     # 
     status = 'Job completed'
+    
+    print('Job completed successfully.\n')
     
     return jsonify(lngM=lngM,latM=latM,
                    lngN=lngN,latN=latN,

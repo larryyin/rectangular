@@ -3,7 +3,7 @@
   <head>
     <meta name="viewport" content="initial-scale=1.0, user-scalable=no">
     <meta charset="utf-8">
-    <title>Rectangular 1.1</title>
+    <title>Rectangular 1.2</title>
     <style>
       html, body {
         height: 100%;
@@ -250,7 +250,8 @@
         latC: latC.toString(),
         lngC: lngC.toString(),
         cs: $('input[name="cs"]').val(),
-        demPath: $('input[name="demPath"]').val()
+        demPath: $('input[name="demPath"]').val(),
+        buildingsPath: $('input[name="buildingsPath"]').val()
       }, function(data) {
         $('#lenI').text(Math.round(data.lenI*10)/10);
         $('#lenJ').text(Math.round(data.lenJ*10)/10);
@@ -408,13 +409,14 @@
   <div class="map-container">
     <div id="map" class="map"></div>
     <div id="user_input">
-      - <b>Rectangular 1.0</b> - <p>
+      - <b>Rectangular 1.2</b> - <p>
       <a href=# id="draft">DRAFT</a> &nbsp;&nbsp;&nbsp; 
       <a href=# id="final">FINAL</a> <p>
       Cell size: <input type="text" size="4" name="cs"> m <p>
       Domain: <span id="lenI"> ? </span> m x <span id="lenJ"> ? </span> m <p>      
-      Model grid: <span id="cnI"> ? </span> x <span id="cnJ"> ? </span> <p>
+      Grid estimate: <span id="cnI"> ? </span> x <span id="cnJ"> ? </span> <p>
       DEM: <input type="text" size="10" name="demPath"> (opt)<p>
+      Buildings: <input type="text" size="10" name="buildingsPath"> (opt)<p>
       Status: <span id="status"> ? </span>
     </div>
   </div>
