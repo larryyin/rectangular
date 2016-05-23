@@ -14,7 +14,9 @@ from scipy.interpolate import griddata
 import os
 import re
 import shutil
+from subprocess import call
 from scipy import stats
+import time
 
 def center2corners(CENTER):
     CORNERS = np.zeros([CENTER.shape[0]+1,CENTER.shape[1]+1])
@@ -248,7 +250,7 @@ class Polygon:
             mindst = float(mindst)
         return mindst
 
-def kml2polygon(kml):
+def kml2polygon(kml,extentW=None,extentS=None,extentE=None,extentN=None):
     with open(kml,'r') as f_poly:
         text_all = f_poly.read().replace('\n', '')
     
@@ -291,10 +293,22 @@ def kml2polygon(kml):
                 block = (stripper.sub('', item[item.find("<outerBoundaryIs>")+
                          len("<outerBoundaryIs>"):].replace(' ',';'))).lstrip(';').rstrip('/').rstrip(';').rstrip('/').rstrip(';')
                 outer_block.append(block)
+    text_all = None
     
-    outer = [np.array([[float(v6) for v6 in v5] for v5 in v4]) for v4 in 
-            [[v3.split(',') for v3 in v2] for v2 in 
-             [v.split(';') for v in outer_block]]]
+    outer = np.array([np.array([[float(v6) for v6 in v5] for v5 in v4]) for v4 in 
+                     [[v3.split(',') for v3 in v2] for v2 in 
+                      [v.split(';') for v in outer_block]]])
+    outer_block = None
+    
+    if np.array([extentW,extentS,extentE,extentN]).all():
+        extentWS = np.array([extentW,extentS])
+        extentEN = np.array([extentE,extentN])
+        
+        WS = np.array([np.min(v1,axis=0) for v1 in outer])
+        EN = np.array([np.max(v1,axis=0) for v1 in outer])
+        
+        isExtent = np.hstack((WS>extentWS,EN<extentEN)).all(axis=1)
+        outer = np.extract(isExtent, outer)
     
     polygons = [Polygon(v[:,0], v[:,1]) for v in outer]
     return polygons
@@ -446,6 +460,8 @@ def draft():
 @app.route('/_final')
 def final():
     """Generating model grid..."""
+    run_start = time.time()
+    
     latO = request.args.get('latO', 0, type=float)
     lngO = request.args.get('lngO', 0, type=float)
     latA = request.args.get('latA', 0, type=float)
@@ -458,6 +474,13 @@ def final():
     
     status = ''
     
+    tmpPath = 'tmp/'
+    if not os.path.exists(tmpPath):
+        os.makedirs(tmpPath)
+    else:
+        shutil.rmtree(tmpPath)
+        os.makedirs(tmpPath)
+    
     demPath = request.args.get('demPath', 0, type=str)
     if not demPath:
         demPath = 'dem/'+os.listdir('dem/')[0]
@@ -466,20 +489,26 @@ def final():
         return jsonify(status=status)
     print('DEM path: '+demPath)
     
-    buildingsPath = request.args.get('buildingsPath', 0, type=str)
-    if not buildingsPath:
+    demclippedPath = tmpPath+'clipped.tif'
+    
+    buildingsPathList = request.args.get('buildingsPath', 0, type=str)
+    if not buildingsPathList:
         if not os.listdir('buildings/'):
             isBuilding = 0
         else:
             isBuilding = 1
-            buildingsPath = 'buildings/'+os.listdir('buildings/')[0]
-            print('Buildings path: '+buildingsPath)
-    elif not os.path.exists(buildingsPath):
+            buildingsPathList = [('buildings/'+v) for v in os.listdir('buildings/')]
+#            buildingsPath = 'buildings/'+os.listdir('buildings/')[0]
+            for v in buildingsPathList:
+                print('Buildings path: '+v)
+    elif not os.path.exists(buildingsPathList.split(',')[0]):
         status = 'Invalid buildings'
         return jsonify(status=status)
     else:
         isBuilding = 1
-        print('Buildings path: '+buildingsPath)
+        buildingsPathList = buildingsPathList.split(',')
+        for v in buildingsPathList:
+            print('Buildings path: '+v)
     
     outPath = 'out/'
     print('Output path: '+outPath)
@@ -805,12 +834,28 @@ def final():
     print('H2', stats.describe(H2m.ravel()))
     print('ANG', stats.describe(ANGm.ravel()))
     
+    
+    #%% DEM
+    clipMargin = cs*.00005 # 5 times cell size in meters
+    clipW = np.nanmin(cn_lonm.ravel())-clipMargin
+    clipS = np.nanmin(cn_latm.ravel())-clipMargin
+    clipE = np.nanmax(cn_lonm.ravel())+clipMargin
+    clipN = np.nanmax(cn_latm.ravel())+clipMargin
+    clipRes = cs*.00001*.2
+    # gdalwarp -te <x_min> <y_min> <x_max> <y_max> input.tif clipped_output.tif
+    # gdalwarp -tr 30 30 -r average equals2.tif equals2-averaged_30m.tif
+    call(['gdalwarp', 
+          '-te', '{:f}'.format(clipW), '{:f}'.format(clipS), 
+          '{:f}'.format(clipE), '{:f}'.format(clipN), 
+          '-tr', '{:f}'.format(clipRes), '{:f}'.format(clipRes), '-r', 'bilinear',
+          demPath, demclippedPath])
+    
     #%% Depth
     print('Extracting depths from DEM...')
     #%% H1, H2 Distance Matrix
     # Open the dataset
     bandNum1 = 1
-    DEM = gdal.Open(demPath, GA_ReadOnly )
+    DEM = gdal.Open(demclippedPath, GA_ReadOnly )
     band1 = DEM.GetRasterBand(bandNum1)
     
     geotransform = DEM.GetGeoTransform()
@@ -818,6 +863,7 @@ def final():
     y_ul = geotransform[3]
     x_size = geotransform[1]
     y_size = geotransform[5]
+    print('DEM cellsize: {xSize:f} x {ySize:f}'.format(xSize=x_size,ySize=y_size))
     
     data_raw = BandReadAsArray(band1)
     (y_cell,x_cell) = data_raw.shape
@@ -833,6 +879,30 @@ def final():
     band1 = None
     DEM = None
     
+#==============================================================================
+#     # Zonal average scheme
+#     depthm = np.empty(lonm.shape)
+#     depthm.fill(np.nan)
+#     sampleCountm = np.zeros(lonm.shape)
+#     
+#     for j in range(cnJ):
+#         for i in range(cnI):
+#             cell_vertices = np.array([[cn_lonm[i,j],cn_latm[i,j]],
+#                                       [cn_lonm[i+1,j],cn_latm[i+1,j]],
+#                                       [cn_lonm[i+1,j+1],cn_latm[i+1,j+1]],
+#                                       [cn_lonm[i,j+1],cn_latm[i,j+1]],
+#                                       [cn_lonm[i,j],cn_latm[i,j]]])
+#             cell_polygon = Polygon(cell_vertices[:,0], cell_vertices[:,1])
+# #            depth_polygon = data[cell_polygon.is_inside(x_coor,y_coor)>0]
+#             depth_polygon = data[(cell_polygon.is_inside(x_coor,y_coor)>0)*mask_domain]
+#             if len(depth_polygon)>0:
+#                 depthm[i,j] = np.mean(depth_polygon)
+#                 sampleCountm[i,j] = depth_polygon.size
+#             print(depthm[i,j],sampleCountm[i,j])
+#     print(depthm)
+#     print(sampleCountm)
+#==============================================================================
+    # Griddata scheme
     distm_lat,distm_lon = latlonlen(latm)
     distm_y,distm_x = latlonlen(y_coor)
     
@@ -843,14 +913,16 @@ def final():
     datumm = np.zeros(lonm.shape)
     
     #%% Buildings
-    print("Importing buildings...")
+    non_building = np.ones(lonm.shape).astype(bool)
     if isBuilding:
-        non_building = np.ones(lonm.shape).astype(bool)
-        polygons = kml2polygon(buildingsPath)
-        for v in polygons:
-            non_building *= ~(v.is_inside(lonm,latm)>0)
-        print("Imported "+str(len(polygons))+" buildings occupying "+
-              str(np.nansum(np.nansum((~non_building).astype(int))))+" cells.")
+        print("Importing buildings...")
+        for buildingsPath in buildingsPathList:
+            polygons = kml2polygon(buildingsPath,extentW=clipW,extentS=clipS,
+                                   extentE=clipE,extentN=clipN)
+            for v in polygons:
+                non_building *= ~(v.is_inside(lonm,latm)>0)
+            print("Imported from {buildingsPath:s}: {nBuilding:d} buildings.".format(buildingsPath=buildingsPath,nBuilding=len(polygons)))
+        print("Total building footprint: {nBuildingCell:d} cells.".format(nBuildingCell=np.nansum(np.nansum((~non_building).astype(int)))))
     
     #%% Output
     print('Write to output...')
@@ -889,9 +961,12 @@ def final():
     with open(outPath+'model_grid.csv', 'w') as f:
         f.writelines(s)
     
-    # 
+    #
+    shutil.rmtree(tmpPath)
     status = 'Job completed'
     
+    run_end = time.time()
+    print(run_end-run_start)
     print('Job completed successfully.\n')
     
     return jsonify(lngM=lngM,latM=latM,
