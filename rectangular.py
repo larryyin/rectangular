@@ -632,8 +632,10 @@ def final():
     med_H2 = 0
     loop = 0
     
-    while abs(cs-med_H1)>=cs_prec:
+    loopCount = 0
+    while (abs(cs-med_H1)>=cs_prec) and (loopCount<100):
         loop+=1
+        loopCount+=1
         if med_H1*med_H2>0:
             csI = csI-(med_H1-cs)/2
         else:
@@ -726,9 +728,12 @@ def final():
         
         med_H1 = np.median(H1m.ravel())
         med_H2 = np.median(H2m.ravel())
-
-    while abs(cs-med_H2)>=cs_prec:
+    
+    #
+    loopCount = 0
+    while (abs(cs-med_H2)>=cs_prec) and (loopCount<100):
         loop+=1
+        loopCount+=1
         if med_H2>0:
             csJ = csJ-(med_H2-cs)/2
         else:
@@ -913,16 +918,21 @@ def final():
     datumm = np.zeros(lonm.shape)
     
     #%% Buildings
-    non_building = np.ones(lonm.shape).astype(bool)
+#    non_building = np.ones(lonm.shape).astype(bool)
     if isBuilding:
         print("Importing buildings...")
         for buildingsPath in buildingsPathList:
             polygons = kml2polygon(buildingsPath,extentW=clipW,extentS=clipS,
                                    extentE=clipE,extentN=clipN)
+            bad_building = 0
             for v in polygons:
-                non_building *= ~(v.is_inside(lonm,latm)>0)
+                try:
+                    depthm[v.is_inside(lonm,latm)>0] = np.nan
+                except:
+                    bad_building+=1
+                    print('{nBad:d} bad building shapes...'.format(nBad=bad_building))
             print("Imported from {buildingsPath:s}: {nBuilding:d} buildings.".format(buildingsPath=buildingsPath,nBuilding=len(polygons)))
-        print("Total building footprint: {nBuildingCell:d} cells.".format(nBuildingCell=np.nansum(np.nansum((~non_building).astype(int)))))
+#        print("Total building footprint: {nBuildingCell:d} cells.".format(nBuildingCell=np.nansum(np.nansum((~non_building).astype(int)))))
     
     #%% Output
     print('Write to output...')
@@ -938,7 +948,8 @@ def final():
     s += "{nI:5d}{nJ:5d}".format(nI=cnI,nJ=cnJ)
     for j in range(1,cnJ-1):
         for i in range(1,cnI-1):
-            if (~isnan(depthm[i][j])) and non_building[i][j]:
+#            if (~isnan(depthm[i][j])) and non_building[i][j]:
+            if ~isnan(depthm[i][j]):
                 s += "\n{I:5d}{J:5d}{H1:10.2f}{H2:10.2f}{depth:10.3f}{ang:10.2f}{lat:10.6f}{lon:10.6f}{datum:5.1f}".format(I=Im[i][j],J=Jm[i][j],H1=H1m[i][j],H2=H2m[i][j],depth=depthm[i][j],ang=ANGm[i][j],lat=latm[i][j],lon=lonm[i][j],datum=datumm[i][j])  
     with open(outPath+'model_grid_hor', 'w') as f:
         f.writelines(s)
@@ -956,7 +967,8 @@ def final():
     s += "I,J,H1,H2,depth,ang,lat,lon,datum\n"
     for j in range(1,cnJ-1):
         for i in range(1,cnI-1):
-            if (~isnan(depthm[i][j])) and non_building[i][j]:
+#            if (~isnan(depthm[i][j])) and non_building[i][j]:
+            if ~isnan(depthm[i][j]):
                 s += "\n{I:d},{J:d},{H1:.2f},{H2:.2f},{depth:.3f},{ang:.2f},{lat:.6f},{lon:.6f},{datum:.1f}".format(I=Im[i][j],J=Jm[i][j],H1=H1m[i][j],H2=H2m[i][j],depth=depthm[i][j],ang=ANGm[i][j],lat=latm[i][j],lon=lonm[i][j],datum=datumm[i][j])  
     with open(outPath+'model_grid.csv', 'w') as f:
         f.writelines(s)
