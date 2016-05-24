@@ -852,7 +852,7 @@ def final():
     call(['gdalwarp', 
           '-te', '{:f}'.format(clipW), '{:f}'.format(clipS), 
           '{:f}'.format(clipE), '{:f}'.format(clipN), 
-          '-tr', '{:f}'.format(clipRes), '{:f}'.format(clipRes), '-r', 'bilinear',
+#          '-tr', '{:f}'.format(clipRes), '{:f}'.format(clipRes), '-r', 'bilinear',
           demPath, demclippedPath])
     
     #%% Depth
@@ -885,7 +885,7 @@ def final():
     DEM = None
     
 #==============================================================================
-#     # Zonal average scheme
+#     # Cell average scheme
 #     depthm = np.empty(lonm.shape)
 #     depthm.fill(np.nan)
 #     sampleCountm = np.zeros(lonm.shape)
@@ -911,14 +911,15 @@ def final():
     distm_lat,distm_lon = latlonlen(latm)
     distm_y,distm_x = latlonlen(y_coor)
     
-    depthm = griddata((np.ravel(x_coor*distm_x),np.ravel(y_coor*distm_y)), np.ravel(data), (np.ravel(lonm*distm_lon),np.ravel(latm*distm_lat)), method='linear')
+    depthm = griddata((np.ravel(x_coor*distm_x),np.ravel(y_coor*distm_y)), 
+                      np.ravel(data), (np.ravel(lonm*distm_lon),
+                      np.ravel(latm*distm_lat)), method='linear')
     depthm = -depthm.reshape(lonm.shape)
     
     #%%
     datumm = np.zeros(lonm.shape)
     
     #%% Buildings
-#    non_building = np.ones(lonm.shape).astype(bool)
     if isBuilding:
         print("Importing buildings...")
         for buildingsPath in buildingsPathList:
@@ -926,13 +927,13 @@ def final():
                                    extentE=clipE,extentN=clipN)
             bad_building = 0
             for v in polygons:
-                try:
-                    depthm[v.is_inside(lonm,latm)>0] = np.nan
-                except:
+                building_polygon = v.is_inside(lonm,latm)>0
+                if (building_polygon.sum()/lonm.size)<.2:
+                    depthm[building_polygon] = np.nan
+                else:
                     bad_building+=1
                     print('{nBad:d} bad building shapes...'.format(nBad=bad_building))
             print("Imported from {buildingsPath:s}: {nBuilding:d} buildings.".format(buildingsPath=buildingsPath,nBuilding=len(polygons)))
-#        print("Total building footprint: {nBuildingCell:d} cells.".format(nBuildingCell=np.nansum(np.nansum((~non_building).astype(int)))))
     
     #%% Output
     print('Write to output...')
