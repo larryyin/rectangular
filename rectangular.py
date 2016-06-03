@@ -10,6 +10,7 @@ from osgeo.gdalnumeric import *
 from osgeo.gdalconst import *
 import json
 import numpy as np
+import pandas as pd
 from scipy.interpolate import griddata
 import os
 import re
@@ -472,6 +473,7 @@ def final():
     lngC = request.args.get('lngC', 0, type=float)
     cs = request.args.get('cs', 0, type=float)
     
+    #%% Paths
     status = ''
     
     tmpPath = 'tmp/'
@@ -489,8 +491,8 @@ def final():
         return jsonify(status=status)
     print('DEM path: '+demPath)
     
-    demclippedPath = tmpPath+'clipped.tif'
-    
+    demclippedPath = tmpPath+'dem_clipped.tif'
+    #
     buildingsPathList = request.args.get('buildingsPath', 0, type=str)
     if not buildingsPathList:
         if not os.listdir('buildings/'):
@@ -509,10 +511,28 @@ def final():
         buildingsPathList = buildingsPathList.split(',')
         for v in buildingsPathList:
             print('Buildings path: '+v)
+    #
+    nlcdPath = request.args.get('nlcdPath', 0, type=str)
+    if not nlcdPath:
+        if not os.listdir('nlcd/'):
+            isNLCD = 0
+        else:
+            isNLCD = 1
+            nlcdPath = 'nlcd/'+os.listdir('nlcd/')[0]
+            print('NLCD path: '+nlcdPath)
+    elif not os.path.exists(nlcdPath):
+        status = 'Invalid NLCD'
+        return jsonify(status=status)
+    else:
+        isNLCD = 1
+        print('NLCD path: '+nlcdPath)
     
+    nlcdclippedPath = tmpPath+'nlcd_clipped.tif'
+    #
     outPath = 'out/'
     print('Output path: '+outPath)
     
+    #%%
     wgs84 = osr.SpatialReference()
     omerc = osr.SpatialReference()
     wgs84.SetWellKnownGeogCS("WGS84")
@@ -846,7 +866,7 @@ def final():
     clipS = np.nanmin(cn_latm.ravel())-clipMargin
     clipE = np.nanmax(cn_lonm.ravel())+clipMargin
     clipN = np.nanmax(cn_latm.ravel())+clipMargin
-    clipRes = cs*.00001*.2
+#    clipRes = cs*.00001*.2
     # gdalwarp -te <x_min> <y_min> <x_max> <y_max> input.tif clipped_output.tif
     # gdalwarp -tr 30 30 -r average equals2.tif equals2-averaged_30m.tif
     call(['gdalwarp', 
@@ -935,6 +955,57 @@ def final():
                     print('{nBad:d} bad building shapes...'.format(nBad=bad_building))
             print("Imported from {buildingsPath:s}: {nBuilding:d} buildings.".format(buildingsPath=buildingsPath,nBuilding=len(polygons)))
     
+    #%% NLCD
+    if isNLCD:
+        call(['gdalwarp', 
+              '-te', '{:f}'.format(clipW), '{:f}'.format(clipS), 
+              '{:f}'.format(clipE), '{:f}'.format(clipN), 
+              nlcdPath, nlcdclippedPath])
+        
+        print('Extracting NLCD classes from raster...')
+        # Open the dataset
+        bandNum1 = 1
+        DEM = gdal.Open(nlcdclippedPath, GA_ReadOnly )
+        band1 = DEM.GetRasterBand(bandNum1)
+        
+        geotransform = DEM.GetGeoTransform()
+        x_ul = geotransform[0]
+        y_ul = geotransform[3]
+        x_size = geotransform[1]
+        y_size = geotransform[5]
+        print('NLCD raster cellsize: {xSize:f} x {ySize:f}'.format(xSize=x_size,ySize=y_size))
+        
+        data_raw = BandReadAsArray(band1)
+        (y_cell,x_cell) = data_raw.shape
+        xv, yv = meshgrid(range(x_cell), range(y_cell), indexing='xy')
+        x_coor = xv * x_size + x_ul + (x_size*.5)
+        y_coor = yv * y_size + y_ul + (y_size*.5)
+        
+        data = np.copy(data_raw).astype(float)
+        
+        # Close the datasets
+        band1 = None
+        DEM = None
+        
+        # Griddata scheme
+        distm_y,distm_x = latlonlen(y_coor)
+        
+        nlcdm = griddata((np.ravel(x_coor*distm_x),np.ravel(y_coor*distm_y)), 
+                          np.ravel(data), (np.ravel(lonm*distm_lon),
+                          np.ravel(latm*distm_lat)), method='nearest')
+        nlcdm = nlcdm.reshape(lonm.shape)
+        nlcdm[np.isnan(depthm)] = np.nan
+        
+        # NLCD to Manning's
+        LC = pd.read_csv('templates/nlcd_table.csv')
+        LC_match = list(zip(LC.NLCD.values,LC.Manning.values))
+        
+        manm = np.ones(nlcdm.shape)*.02 # Conservative base value
+        for v in LC_match:
+            manm[nlcdm==v[0]] = round(v[1],3)
+        
+        BFRIC_base = 0.0025
+    
     #%% Output
     print('Write to output...')
     if not os.path.exists(outPath):
@@ -949,7 +1020,6 @@ def final():
     s += "{nI:5d}{nJ:5d}".format(nI=cnI,nJ=cnJ)
     for j in range(1,cnJ-1):
         for i in range(1,cnI-1):
-#            if (~isnan(depthm[i][j])) and non_building[i][j]:
             if ~isnan(depthm[i][j]):
                 s += "\n{I:5d}{J:5d}{H1:10.2f}{H2:10.2f}{depth:10.3f}{ang:10.2f}{lat:10.6f}{lon:10.6f}{datum:5.1f}".format(I=Im[i][j],J=Jm[i][j],H1=H1m[i][j],H2=H2m[i][j],depth=depthm[i][j],ang=ANGm[i][j],lat=latm[i][j],lon=lonm[i][j],datum=datumm[i][j])  
     with open(outPath+'model_grid_hor', 'w') as f:
@@ -963,18 +1033,39 @@ def final():
     with open(outPath+'corner_loc', 'w') as f:
         f.writelines(s)
     
-    # Write model_grid to csv
-    s = []
-    s += "I,J,H1,H2,depth,ang,lat,lon,datum\n"
-    for j in range(1,cnJ-1):
-        for i in range(1,cnI-1):
-#            if (~isnan(depthm[i][j])) and non_building[i][j]:
-            if ~isnan(depthm[i][j]):
-                s += "\n{I:d},{J:d},{H1:.2f},{H2:.2f},{depth:.3f},{ang:.2f},{lat:.6f},{lon:.6f},{datum:.1f}".format(I=Im[i][j],J=Jm[i][j],H1=H1m[i][j],H2=H2m[i][j],depth=depthm[i][j],ang=ANGm[i][j],lat=latm[i][j],lon=lonm[i][j],datum=datumm[i][j])  
-    with open(outPath+'model_grid.csv', 'w') as f:
-        f.writelines(s)
+    if not isNLCD:
+        # Write model_grid to csv
+        s = []
+        s += "I,J,H1,H2,depth,ang,lat,lon,datum"
+        for j in range(1,cnJ-1):
+            for i in range(1,cnI-1):
+                if ~isnan(depthm[i][j]):
+                    s += "\n{I:d},{J:d},{H1:.2f},{H2:.2f},{depth:.3f},{ang:.2f},{lat:.6f},{lon:.6f},{datum:.1f}".format(I=Im[i][j],J=Jm[i][j],H1=H1m[i][j],H2=H2m[i][j],depth=depthm[i][j],ang=ANGm[i][j],lat=latm[i][j],lon=lonm[i][j],datum=datumm[i][j])  
+        with open(outPath+'model_grid.csv', 'w') as f:
+            f.writelines(s)
+    else:    
+        # Write to bfric2d.inp
+        s = []
+        s += "NVARBF    BFRIC\n"
+        s += "   -1{base:10.5f}\n".format(base=BFRIC_base)
+        s += "    I    J     VARBF"
+        for j in range(cnJ):
+            for i in range(cnI):
+                s += "\n{I:5d}{J:5d}{Man:10.5f}".format(I=i+1,J=j+1,Man=manm[i][j])  
+        with open(outPath+'bfric2d.inp', 'w') as f:
+            f.writelines(s)
+        
+        # Write model_grid and NLCD/Manning's to csv
+        s = []
+        s += "I,J,H1,H2,depth,ang,lat,lon,datum,NLCD,Mannings"
+        for j in range(cnJ):
+            for i in range(cnI):
+                if ~isnan(depthm[i][j]):
+                    s += "\n{I:d},{J:d},{H1:.2f},{H2:.2f},{depth:.3f},{ang:.2f},{lat:.6f},{lon:.6f},{datum:.1f},{NLCD:.0f},{Mannings:.3f}".format(I=Im[i][j],J=Jm[i][j],H1=H1m[i][j],H2=H2m[i][j],depth=depthm[i][j],ang=ANGm[i][j],lat=latm[i][j],lon=lonm[i][j],datum=datumm[i][j],NLCD=nlcdm[i][j],Mannings=manm[i][j])  
+        with open(outPath+'model_grid.csv', 'w') as f:
+            f.writelines(s)
     
-    #
+    #%%
     shutil.rmtree(tmpPath)
     status = 'Job completed'
     
