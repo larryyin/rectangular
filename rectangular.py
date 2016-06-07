@@ -1140,6 +1140,11 @@ def final():
         with open(outPath+'model_grid.csv', 'w') as f:
             f.writelines(s)
     
+    # Save to binary
+    np.savez('out/bin.npz', 
+             cnI=cnI,cnJ=cnJ,Im=Im,Jm=Jm,H1m=H1m,H2m=H2m,depthm=depthm,
+             ANGm=ANGm,latm=latm,lonm=lonm,datumm=datumm,nlcdm=nlcdm,manm=manm)
+    
     #%%
     shutil.rmtree(tmpPath)
     status = 'Job completed'
