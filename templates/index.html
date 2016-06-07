@@ -3,7 +3,7 @@
   <head>
     <meta name="viewport" content="initial-scale=1.0, user-scalable=no">
     <meta charset="utf-8">
-    <title>Rectangular 1.4</title>
+    <title>Rectangular 1.5</title>
     <style>
       html, body {
         height: 100%;
@@ -223,13 +223,22 @@
         lngB: lngB.toString(),
         latC: latC.toString(),
         lngC: lngC.toString(),
-        cs: $('input[name="cs"]').val()
+        cs: $('input[name="cs"]').val(),
+        abcPath: $('input[name="abcPath"]').val()
       }, function(data) {
         $('#lenI').text(Math.round(data.lenI*10)/10);
         $('#lenJ').text(Math.round(data.lenJ*10)/10);
         $('#cnI').text(data.cnI);
         $('#cnJ').text(data.cnJ);
         $('input[name=cs]').focus().select();
+        latA = data.latA;
+        lngA = data.lngA;
+        latB = data.latB;
+        lngB = data.lngB;
+        latC = data.latC;
+        lngC = data.lngC;
+        latO = data.latO;
+        lngO = data.lngO;
         latM = data.latM;
         lngM = data.lngM;
         latN = data.latN;
@@ -252,7 +261,8 @@
         cs: $('input[name="cs"]').val(),
         demPath: $('input[name="demPath"]').val(),
         buildingsPath: $('input[name="buildingsPath"]').val(),
-        nlcdPath: $('input[name="nlcdPath"]').val()
+        nlcdPath: $('input[name="nlcdPath"]').val(),
+        abcPath: $('input[name="abcPath"]').val()
       }, function(data) {
         $('#lenI').text(Math.round(data.lenI*10)/10);
         $('#lenJ').text(Math.round(data.lenJ*10)/10);
@@ -260,6 +270,14 @@
         $('#cnJ').text(data.cnJ);
         $('#status').text(data.status);
         $('input[name=demPath]').focus().select();
+        latA = data.latA;
+        lngA = data.lngA;
+        latB = data.latB;
+        lngB = data.lngB;
+        latC = data.latC;
+        lngC = data.lngC;
+        latO = data.latO;
+        lngO = data.lngO;
         latM = data.latM;
         lngM = data.lngM;
         latN = data.latN;
@@ -410,15 +428,16 @@
   <div class="map-container">
     <div id="map" class="map"></div>
     <div id="user_input">
-      - <b>Rectangular 1.4</b> - <p>
+      - <b>Rectangular 1.5</b> - <p>
       <a href=# id="draft">DRAFT</a> &nbsp;&nbsp;&nbsp; 
       <a href=# id="final">FINAL</a> <p>
       Cell size: <input type="text" size="4" name="cs"> m <p>
       Domain: <span id="lenI"> ? </span> m x <span id="lenJ"> ? </span> m <p>      
       Grid estimate: <span id="cnI"> ? </span> x <span id="cnJ"> ? </span> <p>
-      DEM: <input type="text" size="10" name="demPath"> (opt)<p>
-      Buildings: <input type="text" size="10" name="buildingsPath"> (opt)<p>
-      NLCD: <input type="text" size="10" name="nlcdPath"> (opt)<p>
+      ABC: <input type="text" size="10" name="abcPath" placeholder="Optional"><p>
+      DEM: <input type="text" size="10" name="demPath" placeholder="Optional"><p>
+      Buildings: <input type="text" size="10" name="buildingsPath" placeholder="Optional"><p>
+      NLCD: <input type="text" size="10" name="nlcdPath" placeholder="Optional"><p>
       Status: <span id="status"> ? </span>
     </div>
   </div>

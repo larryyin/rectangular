@@ -320,14 +320,39 @@ cs_prec = 0.004 # m
 @app.route('/_draft')
 def draft():
     """Constructing rectangle..."""
-    latO = request.args.get('latO', 0, type=float)
-    lngO = request.args.get('lngO', 0, type=float)
-    latA = request.args.get('latA', 0, type=float)
-    lngA = request.args.get('lngA', 0, type=float)
-    latB = request.args.get('latB', 0, type=float)
-    lngB = request.args.get('lngB', 0, type=float)
-    latC = request.args.get('latC', 0, type=float)
-    lngC = request.args.get('lngC', 0, type=float)
+    if not os.path.exists('abc/'):
+        os.makedirs('abc/')
+        
+    abcPath = request.args.get('abcPath', 0, type=str)
+    if not abcPath:
+        if not os.listdir('abc/'):
+            isABC = 0
+        else:
+            isABC = 1
+            abcPath = 'abc/'+os.listdir('abc/')[0]
+            print('ABC path: '+abcPath)
+    elif not os.path.exists(abcPath):
+        status = 'Invalid ABC'
+        return jsonify(status=status)
+    else:
+        isABC = 1
+        print('ABC path: '+abcPath)
+    
+    if isABC:
+        ABC = pd.read_csv(abcPath)
+        lngA,latA = ABC.iloc[0]
+        lngB,latB = ABC.iloc[1]
+        lngC,latC = ABC.iloc[2]
+        lngO,latO = ABC.iloc[3]
+    else:    
+        latO = request.args.get('latO', 0, type=float)
+        lngO = request.args.get('lngO', 0, type=float)
+        latA = request.args.get('latA', 0, type=float)
+        lngA = request.args.get('lngA', 0, type=float)
+        latB = request.args.get('latB', 0, type=float)
+        lngB = request.args.get('lngB', 0, type=float)
+        latC = request.args.get('latC', 0, type=float)
+        lngC = request.args.get('lngC', 0, type=float)
 #    sf = request.args.get('sf', 0, type=float)
     cs = request.args.get('cs', 0, type=float)
     print(lngO,latO)
@@ -335,6 +360,21 @@ def draft():
     print(lngB,latB)
     print(lngC,latC)
 #    print(sf,cs)
+    
+    outPath = 'out/'
+    if not os.path.exists(outPath):
+        os.makedirs(outPath)
+    
+    # Save ABC
+    s = []
+    s += 'lng,lat'
+    s += '\n{:f},{:f}'.format(lngA,latA)
+    s += '\n{:f},{:f}'.format(lngB,latB)
+    s += '\n{:f},{:f}'.format(lngC,latC)
+    s += '\n{:f},{:f}'.format(lngO,latO)
+    with open(outPath+'ABC', 'w') as f:
+        f.writelines(s)
+    
     
     wgs84 = osr.SpatialReference()
     omerc = osr.SpatialReference()
@@ -451,7 +491,11 @@ def draft():
     lngN = wgs_MN[1][0]
     latN = wgs_MN[1][1]
     
-    return jsonify(lngM=lngM,latM=latM,
+    return jsonify(lngA=lngA,latA=latA,
+                   lngB=lngB,latB=latB,
+                   lngC=lngC,latC=latC,
+                   lngO=lngO,latO=latO,
+                   lngM=lngM,latM=latM,
                    lngN=lngN,latN=latN,
                    lenI=lenI,lenJ=lenJ,
                    cnI=cnI,cnJ=cnJ)
@@ -463,14 +507,39 @@ def final():
     """Generating model grid..."""
     run_start = time.time()
     
-    latO = request.args.get('latO', 0, type=float)
-    lngO = request.args.get('lngO', 0, type=float)
-    latA = request.args.get('latA', 0, type=float)
-    lngA = request.args.get('lngA', 0, type=float)
-    latB = request.args.get('latB', 0, type=float)
-    lngB = request.args.get('lngB', 0, type=float)
-    latC = request.args.get('latC', 0, type=float)
-    lngC = request.args.get('lngC', 0, type=float)
+    if not os.path.exists('abc/'):
+        os.makedirs('abc/')
+    
+    abcPath = request.args.get('abcPath', 0, type=str)
+    if not abcPath:
+        if not os.listdir('abc/'):
+            isABC = 0
+        else:
+            isABC = 1
+            abcPath = 'abc/'+os.listdir('abc/')[0]
+            print('ABC path: '+abcPath)
+    elif not os.path.exists(abcPath):
+        status = 'Invalid ABC'
+        return jsonify(status=status)
+    else:
+        isABC = 1
+        print('ABC path: '+abcPath)
+    
+    if isABC:
+        ABC = pd.read_csv(abcPath)
+        lngA,latA = ABC.iloc[0]
+        lngB,latB = ABC.iloc[1]
+        lngC,latC = ABC.iloc[2]
+        lngO,latO = ABC.iloc[3]
+    else:    
+        latO = request.args.get('latO', 0, type=float)
+        lngO = request.args.get('lngO', 0, type=float)
+        latA = request.args.get('latA', 0, type=float)
+        lngA = request.args.get('lngA', 0, type=float)
+        latB = request.args.get('latB', 0, type=float)
+        lngB = request.args.get('lngB', 0, type=float)
+        latC = request.args.get('latC', 0, type=float)
+        lngC = request.args.get('lngC', 0, type=float)
     cs = request.args.get('cs', 0, type=float)
     
     #%% Paths
@@ -492,7 +561,7 @@ def final():
     print('DEM path: '+demPath)
     
     demclippedPath = tmpPath+'dem_clipped.tif'
-    #
+    
     buildingsPathList = request.args.get('buildingsPath', 0, type=str)
     if not buildingsPathList:
         if not os.listdir('buildings/'):
@@ -500,7 +569,6 @@ def final():
         else:
             isBuilding = 1
             buildingsPathList = [('buildings/'+v) for v in os.listdir('buildings/')]
-#            buildingsPath = 'buildings/'+os.listdir('buildings/')[0]
             for v in buildingsPathList:
                 print('Buildings path: '+v)
     elif not os.path.exists(buildingsPathList.split(',')[0]):
@@ -511,7 +579,7 @@ def final():
         buildingsPathList = buildingsPathList.split(',')
         for v in buildingsPathList:
             print('Buildings path: '+v)
-    #
+    
     nlcdPath = request.args.get('nlcdPath', 0, type=str)
     if not nlcdPath:
         if not os.listdir('nlcd/'):
@@ -528,9 +596,24 @@ def final():
         print('NLCD path: '+nlcdPath)
     
     nlcdclippedPath = tmpPath+'nlcd_clipped.tif'
-    #
+    
     outPath = 'out/'
+    if not os.path.exists(outPath):
+        os.makedirs(outPath)
+    else:
+        shutil.rmtree(outPath)
+        os.makedirs(outPath)
     print('Output path: '+outPath)
+
+    # Save ABC
+    s = []
+    s += 'lng,lat'
+    s += '\n{:f},{:f}'.format(lngA,latA)
+    s += '\n{:f},{:f}'.format(lngB,latB)
+    s += '\n{:f},{:f}'.format(lngC,latC)
+    s += '\n{:f},{:f}'.format(lngO,latO)
+    with open(outPath+'ABC', 'w') as f:
+        f.writelines(s)
     
     #%%
     wgs84 = osr.SpatialReference()
@@ -670,7 +753,7 @@ def final():
             cnI = 0
             cnJ = 0
         
-        #%%
+        #
         Jm,Im = np.meshgrid(range(cnJ),range(cnI))
         Jm = Jm+1
         Im = Im+1
@@ -687,12 +770,12 @@ def final():
         Xm = np.array([np.linspace(v,v+Jdx*cnJ,num=cnJ,dtype=float) for v in xI0])
         Ym = np.array([np.linspace(v,v+Jdy*cnJ,num=cnJ,dtype=float) for v in yI0])
         
-        #%%
+        #
         cn_Xm = center2corners(Xm)
         cn_Ym = center2corners(Ym)
         
         
-        #%% Centers
+        # Centers
         wgs_grid = ogr.Geometry(ogr.wkbMultiPoint)
         
         for iJ in range(cnJ):
@@ -713,7 +796,7 @@ def final():
                 count+=1
         wgs_grid = []
         
-        #%% Corners
+        # Corners
         wgs_grid = ogr.Geometry(ogr.wkbMultiPoint)
         
         for iJ in range(cnJ+1):
@@ -735,7 +818,7 @@ def final():
         wgs_grid = []
         
         
-        #%% H1, H2
+        # H1, H2
         I_interim_lonm = cn_lonm[:-1,:]+np.diff(cn_lonm,axis=0)*.5
         I_interim_latm = cn_latm[:-1,:]+np.diff(cn_latm,axis=0)*.5
         J_interim_lonm = cn_lonm[:,:-1]+np.diff(cn_lonm,axis=1)*.5
@@ -768,7 +851,7 @@ def final():
             cnI = 0
             cnJ = 0
         
-        #%%
+        #
         Jm,Im = np.meshgrid(range(cnJ),range(cnI))
         Jm = Jm+1
         Im = Im+1
@@ -785,12 +868,12 @@ def final():
         Xm = np.array([np.linspace(v,v+Jdx*cnJ,num=cnJ,dtype=float) for v in xI0])
         Ym = np.array([np.linspace(v,v+Jdy*cnJ,num=cnJ,dtype=float) for v in yI0])
         
-        #%%
+        #
         cn_Xm = center2corners(Xm)
         cn_Ym = center2corners(Ym)
         
         
-        #%% Centers
+        # Centers
         wgs_grid = ogr.Geometry(ogr.wkbMultiPoint)
         
         for iJ in range(cnJ):
@@ -811,7 +894,7 @@ def final():
                 count+=1
         wgs_grid = []
         
-        #%% Corners
+        # Corners
         wgs_grid = ogr.Geometry(ogr.wkbMultiPoint)
         
         for iJ in range(cnJ+1):
@@ -833,7 +916,7 @@ def final():
         wgs_grid = []
         
         
-        #%% H1, H2
+        # H1, H2
         I_interim_lonm = cn_lonm[:-1,:]+np.diff(cn_lonm,axis=0)*.5
         I_interim_latm = cn_latm[:-1,:]+np.diff(cn_latm,axis=0)*.5
         J_interim_lonm = cn_lonm[:,:-1]+np.diff(cn_lonm,axis=1)*.5
@@ -878,7 +961,6 @@ def final():
     #%% Depth
     print('Extracting depths from DEM...')
     #%% H1, H2 Distance Matrix
-    # Open the dataset
     bandNum1 = 1
     DEM = gdal.Open(demclippedPath, GA_ReadOnly )
     band1 = DEM.GetRasterBand(bandNum1)
@@ -900,7 +982,6 @@ def final():
     data = np.copy(data_raw).astype(float)
     data[~mask_domain] = np.nan
     
-    # Close the datasets
     band1 = None
     DEM = None
     
@@ -952,18 +1033,18 @@ def final():
                     depthm[building_polygon] = np.nan
                 else:
                     bad_building+=1
-                    print('{nBad:d} bad building shapes...'.format(nBad=bad_building))
+                    print('Bad building shape #{nBad:d}...'.format(nBad=bad_building))
             print("Imported from {buildingsPath:s}: {nBuilding:d} buildings.".format(buildingsPath=buildingsPath,nBuilding=len(polygons)))
     
     #%% NLCD
     if isNLCD:
-        call(['gdalwarp', 
+        call(['gdalwarp', '-q', 
               '-te', '{:f}'.format(clipW), '{:f}'.format(clipS), 
               '{:f}'.format(clipE), '{:f}'.format(clipN), 
               nlcdPath, nlcdclippedPath])
         
         print('Extracting NLCD classes from raster...')
-        # Open the dataset
+        
         bandNum1 = 1
         DEM = gdal.Open(nlcdclippedPath, GA_ReadOnly )
         band1 = DEM.GetRasterBand(bandNum1)
@@ -983,7 +1064,6 @@ def final():
         
         data = np.copy(data_raw).astype(float)
         
-        # Close the datasets
         band1 = None
         DEM = None
         
@@ -1008,11 +1088,6 @@ def final():
     
     #%% Output
     print('Write to output...')
-    if not os.path.exists(outPath):
-        os.makedirs(outPath)
-    else:
-        shutil.rmtree(outPath)
-        os.makedirs(outPath)
     
     # Write to model_grid_hor
     s = []
@@ -1073,7 +1148,11 @@ def final():
     print(run_end-run_start)
     print('Job completed successfully.\n')
     
-    return jsonify(lngM=lngM,latM=latM,
+    return jsonify(lngA=lngA,latA=latA,
+                   lngB=lngB,latB=latB,
+                   lngC=lngC,latC=latC,
+                   lngO=lngO,latO=latO,
+                   lngM=lngM,latM=latM,
                    lngN=lngN,latN=latN,
                    lenI=lenI,lenJ=lenJ,
                    cnI=cnI,cnJ=cnJ,
