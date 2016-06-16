@@ -1079,6 +1079,7 @@ def final():
         # NLCD to Manning's
         LC = pd.read_csv('templates/nlcd_table.csv')
         LC_match = list(zip(LC.NLCD.values,LC.Manning.values))
+        LC_dict = dict(zip(LC.NLCD.values,LC.Name.values))
         
         manm = np.ones(nlcdm.shape)*.02 # Conservative base value
         for v in LC_match:
@@ -1132,11 +1133,11 @@ def final():
         
         # Write model_grid and NLCD/Manning's to csv
         s = []
-        s += "I,J,H1,H2,depth,ang,lat,lon,datum,NLCD,Mannings"
+        s += "I,J,H1,H2,depth,ang,lat,lon,datum,NLCD,Mannings,Land"
         for j in range(cnJ):
             for i in range(cnI):
                 if ~isnan(depthm[i][j]):
-                    s += "\n{I:d},{J:d},{H1:.2f},{H2:.2f},{depth:.3f},{ang:.2f},{lat:.6f},{lon:.6f},{datum:.1f},{NLCD:.0f},{Mannings:.3f}".format(I=Im[i][j],J=Jm[i][j],H1=H1m[i][j],H2=H2m[i][j],depth=depthm[i][j],ang=ANGm[i][j],lat=latm[i][j],lon=lonm[i][j],datum=datumm[i][j],NLCD=nlcdm[i][j],Mannings=manm[i][j])  
+                    s += "\n{I:d},{J:d},{H1:.2f},{H2:.2f},{depth:.3f},{ang:.2f},{lat:.6f},{lon:.6f},{datum:.1f},{NLCD:.0f},{Mannings:.3f},{Land:s}".format(I=Im[i][j],J=Jm[i][j],H1=H1m[i][j],H2=H2m[i][j],depth=depthm[i][j],ang=ANGm[i][j],lat=latm[i][j],lon=lonm[i][j],datum=datumm[i][j],NLCD=nlcdm[i][j],Mannings=manm[i][j],Land=LC_dict[int(nlcdm[i][j])])  
         with open(outPath+'model_grid.csv', 'w') as f:
             f.writelines(s)
     
@@ -1144,6 +1145,50 @@ def final():
     np.savez('out/bin.npz', 
              cnI=cnI,cnJ=cnJ,Im=Im,Jm=Jm,H1m=H1m,H2m=H2m,depthm=depthm,
              ANGm=ANGm,latm=latm,lonm=lonm,datumm=datumm,nlcdm=nlcdm,manm=manm)
+    
+    #%% Stats
+    stats_node = cnI*cnJ
+    stats_area = np.nansum((H1m*H2m).ravel())
+    
+    stats_dt1 = np.nanmin((0.5*H1m/np.sqrt(9.80665*(depthm+3))).ravel())
+    stats_dt2 = np.nanmin((0.5*H2m/np.sqrt(9.80665*(depthm+3))).ravel())
+
+    stats_lon_max = np.nanmax(lonm.ravel())
+    stats_lon_min = np.nanmin(lonm.ravel())
+    stats_lat_max = np.nanmax(latm.ravel())
+    stats_lat_min = np.nanmin(latm.ravel())
+    
+    stats_H1_mean = np.nanmean(H1m.ravel())
+    stats_H1_median = np.nanmedian(H1m.ravel())
+    stats_H1_max = np.nanmax(H1m.ravel())
+    stats_H1_min = np.nanmin(H1m.ravel())
+    stats_H2_mean = np.nanmean(H2m.ravel())
+    stats_H2_median = np.nanmedian(H2m.ravel())
+    stats_H2_max = np.nanmax(H2m.ravel())
+    stats_H2_min = np.nanmin(H2m.ravel())
+    stats_ANG_mean = np.nanmean(ANGm.ravel())
+    stats_ANG_median = np.nanmedian(ANGm.ravel())
+    stats_ANG_max = np.nanmax(ANGm.ravel())
+    stats_ANG_min = np.nanmin(ANGm.ravel())
+    stats_depth_mean = np.nanmean(depthm.ravel())
+    stats_depth_median = np.nanmedian(depthm.ravel())
+    stats_depth_max = np.nanmax(depthm.ravel())
+    stats_depth_min = np.nanmin(depthm.ravel())
+    
+    # Write to stats.txt
+    s=[]
+    s+='Stats\n'
+    s+='Nodes: {:d} x {:d} = {:d}\n'.format(cnI,cnJ,stats_node)
+    s+='Extent: {:.6f}, {:.6f}, {:.6f}, {:.6f}\n'.format(stats_lon_min,stats_lat_min,stats_lon_max,stats_lat_max)
+    s+='Area: {:.2f} m^2\n'.format(stats_area)
+    s+='H1: mean({:.2f}), median({:.2f}), min({:.2f}), max({:.2f})\n'.format(stats_H1_mean,stats_H1_median,stats_H1_min,stats_H1_max)
+    s+='H2: mean({:.2f}), median({:.2f}), min({:.2f}), max({:.2f})\n'.format(stats_H2_mean,stats_H2_median,stats_H2_min,stats_H2_max)
+    s+='ANG: mean({:.2f}), median({:.2f}), min({:.2f}), max({:.2f})\n'.format(stats_ANG_mean,stats_ANG_median,stats_ANG_min,stats_ANG_max)
+    s+='Depth: mean({:.3f}), median({:.3f}), min({:.3f}), max({:.3f})\n'.format(stats_depth_mean,stats_depth_median,stats_depth_min,stats_depth_max)
+    s+='Min time step along I: {:.3f} s\n'.format(stats_dt1)
+    s+='Min time step along J: {:.3f} s\n'.format(stats_dt2)
+    with open(outPath+'stats.txt', 'w') as f:
+        f.writelines(s)
     
     #%%
     shutil.rmtree(tmpPath)
