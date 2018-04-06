@@ -1,0 +1,10 @@
+Stats
+Nodes: 259 x 346 = 89614
+Extent: -74.050317, 40.728670, -74.013296, 40.763164
+Area: 8966844.08 m^2
+H1: mean(10.00), median(10.00), min(10.00), max(10.00)
+H2: mean(10.00), median(10.00), min(10.00), max(10.00)
+ANG: mean(-9.65), median(-9.65), min(-9.67), max(-9.64)
+Depth: mean(-10.070), median(-2.011), min(-74.743), max(19.518)
+Min time step along I: -inf s
+Min time step along J: -inf s
