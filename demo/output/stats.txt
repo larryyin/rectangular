@@ -6,5 +6,5 @@ H1: mean(10.00), median(10.00), min(10.00), max(10.00)
 H2: mean(10.00), median(10.00), min(10.00), max(10.00)
 ANG: mean(-9.65), median(-9.65), min(-9.67), max(-9.64)
 Depth: mean(-10.070), median(-2.011), min(-74.743), max(19.518)
-Min time step along I: -inf s
-Min time step along J: -inf s
+Min time step along I: 0.376 s
+Min time step along J: 0.377 s
