@@ -2,7 +2,7 @@
 Create orthogonal grids on the local Earth curve
 
 ## User interface
-![alt text](https://github.com/larryyin/rectangular/blob/master/demo/demo.JPG?raw=true "User interface")
+![alt text](https://github.com/larryyin/rectangular/blob/master/demo/demo.JPG "User interface")
 
 ## Demo run
 "GET /_draft?latO=40.74589374151832&lngO=-74.03184610270273&latA=40.73256186902815&lngA=-74.05031745520023&latB=40.75922266814361&lngB=-74.01336734381107&latC=40.728756956916236&lngC=-74.0202337988892&cs=10&abcPath= HTTP/1.1" 200 -  
