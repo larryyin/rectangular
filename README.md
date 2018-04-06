@@ -37,7 +37,7 @@ Job completed successfully.
 ## Output
 [Demo output](https://github.com/larryyin/rectangular/tree/master/demo/output "demo output")  
 
-Stats
+Stats  
 Nodes: 259 x 346 = 89614  
 Extent: -74.050317, 40.728670, -74.013296, 40.763164  
 Area: 8966844.08 m^2  
