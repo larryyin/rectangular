@@ -1,7 +1,11 @@
-# rectangular
-Rectangular 1.6 - Create orthogonal grids on the Earth surface
+# Rectangular v1.6
+Create orthogonal grids on the local Earth curve
 
-# Create conda environment
+## User interface
+![alt text](https://github.com/larryyin/rectangular/blob/master/demo/demo.JPG "User interface")
+
+
+# conda environment
 conda env create -f environment.yml
 
 # MIT License
